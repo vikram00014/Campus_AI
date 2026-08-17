@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, GraduationCap, LayoutDashboard, Loader2, LogOut, User } from "lucide-react";
 import { login, logout, signup } from "@/app/actions/auth";
@@ -15,7 +14,6 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function AuthPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
