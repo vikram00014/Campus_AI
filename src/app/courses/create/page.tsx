@@ -15,7 +15,6 @@ import {
   Type,
   UploadCloud,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { extractTextFromPDF } from "@/app/actions/parse-pdf";
 import { generateCourseFromSyllabus } from "@/app/actions/course";
 import { Button } from "@/components/ui/button";
@@ -64,7 +63,6 @@ function formatFileSize(file: File): string {
 }
 
 export default function CourseCreatePage() {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [phaseIndex, setPhaseIndex] = useState(0);
@@ -116,15 +114,15 @@ export default function CourseCreatePage() {
         if (!result.success) throw new Error(result.error);
 
         clearJob();
-        router.push(`/courses/${result.courseId}`);
+        window.location.href = `/courses/${result.courseId}`;
       } catch (error) {
         const message = getErrorMessage(error);
         setGenerationError(message);
-        saveJob({ status: "error", payload, error: message, updatedAt: Date.now() });
+        clearJob();
         setIsGenerating(false);
       }
     },
-    [router]
+    []
   );
 
   useEffect(() => {
@@ -184,8 +182,6 @@ export default function CourseCreatePage() {
 
       if (parsed.status === "running") {
         void runGeneration(parsed.payload);
-      } else {
-        setGenerationError(parsed.error || "Previous generation failed. You can retry with the same syllabus.");
       }
     } catch {
       localStorage.removeItem(JOB_KEY);
