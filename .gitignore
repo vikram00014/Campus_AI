@@ -22,6 +22,7 @@
 .qodo/
 .idea/
 .vscode/
+TECH_STACK_AND_DEPLOYMENT_GUIDE.md
 
 # debug
 npm-debug.log*
