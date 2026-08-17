@@ -22,7 +22,12 @@
 .qodo/
 .idea/
 .vscode/
-TECH_STACK_AND_DEPLOYMENT_GUIDE.md
+TECH_STACK_AND_DEPLOYMENT_GUIDE.*
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
 
 # debug
 npm-debug.log*
