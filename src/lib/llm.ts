@@ -20,25 +20,64 @@ export function isLlmConfigured(): boolean {
     return Boolean(geminiKey) || Boolean(groqKey);
 }
 
-function getAvailableModels() {
-    const models = [];
+function getGeminiClient() {
     const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-    const groqKey = process.env.GROQ_API_KEY;
+    return geminiKey ? createGoogleGenerativeAI({ apiKey: geminiKey }) : null;
+}
 
-    if (geminiKey) {
-        const googleClient = createGoogleGenerativeAI({ apiKey: geminiKey });
-        models.push(googleClient("gemini-flash-latest"));
-        models.push(googleClient("gemini-3.6-flash"));
-        models.push(googleClient("gemini-3.5-flash"));
+function getGroqClient() {
+    const groqKey = process.env.GROQ_API_KEY;
+    return groqKey ? createGroq({ apiKey: groqKey }) : null;
+}
+
+/**
+ * Models for structured JSON generation (course parsing).
+ * Uses full Flash models first for higher accuracy, then falls back to Lite (500 RPD free).
+ */
+function getJsonModels() {
+    const models = [];
+    const google = getGeminiClient();
+    const groq = getGroqClient();
+
+    if (google) {
+        models.push(google("gemini-flash-latest"));   // Gemini 3.7 Flash  — 20 RPD
+        models.push(google("gemini-3.6-flash"));      // Gemini 3.6 Flash  — 20 RPD
+        models.push(google("gemini-3.5-flash-lite")); // Gemini 3.5 Flash Lite — 500 RPD 🟢
+        models.push(google("gemini-3.1-flash-lite")); // Gemini 3.1 Flash Lite — 500 RPD 🟢
     }
-    if (groqKey) {
-        const groqClient = createGroq({ apiKey: groqKey });
-        models.push(groqClient("openai/gpt-oss-120b"));
-        models.push(groqClient("openai/gpt-oss-20b"));
+    if (groq) {
+        models.push(groq("llama-3.3-70b-versatile")); // Groq fallback — generous free tier
+        models.push(groq("llama-3.1-8b-instant"));
     }
     if (models.length === 0) {
-        const defaultGoogle = createGoogleGenerativeAI({ apiKey: geminiKey || "" });
-        models.push(defaultGoogle("gemini-flash-latest"));
+        const g = createGoogleGenerativeAI({ apiKey: "" });
+        models.push(g("gemini-flash-latest"));
+    }
+    return models;
+}
+
+/**
+ * Models for text generation (notes, practice questions, AI chat).
+ * Starts with Lite models (500 RPD free) to preserve the scarce 20-RPD Flash quota.
+ */
+function getTextModels() {
+    const models = [];
+    const google = getGeminiClient();
+    const groq = getGroqClient();
+
+    if (google) {
+        models.push(google("gemini-3.5-flash-lite")); // Gemini 3.5 Flash Lite — 500 RPD 🟢 (start here!)
+        models.push(google("gemini-3.1-flash-lite")); // Gemini 3.1 Flash Lite — 500 RPD 🟢
+        models.push(google("gemini-3.6-flash"));      // Gemini 3.6 Flash — 20 RPD (fallback only)
+        models.push(google("gemini-flash-latest"));   // Gemini 3.7 Flash — 20 RPD (last resort)
+    }
+    if (groq) {
+        models.push(groq("llama-3.3-70b-versatile"));
+        models.push(groq("llama-3.1-8b-instant"));
+    }
+    if (models.length === 0) {
+        const g = createGoogleGenerativeAI({ apiKey: "" });
+        models.push(g("gemini-3.5-flash-lite"));
     }
     return models;
 }
@@ -49,7 +88,7 @@ export async function generateText(options: {
     maxTokens?: number;
     effort?: LlmEffort;
 }): Promise<string> {
-    const models = getAvailableModels();
+    const models = getTextModels();
 
     let lastError: unknown = null;
     for (const model of models) {
@@ -81,7 +120,7 @@ export async function generateJson<T>(options: {
     toolName?: string;
     maxTokens?: number;
 }): Promise<T> {
-    const models = getAvailableModels();
+    const models = getJsonModels();
 
     let lastError: unknown = null;
     for (const model of models) {
