@@ -1,130 +1,77 @@
 # CAMPUS AI
 
-> Autonomous Syllabus-to-Course Engine for University Students.
+**Turn messy university syllabi into structured, actionable study paths.**
 
-CAMPUS AI transforms dense, unstructured university syllabus PDFs into interactive, step-by-step study paths. It automatically structures modules and topics, matches relevant video lectures, generates exam revision notes and practice quizzes on demand, tracks study momentum, and issues verifiable completion certificates.
-
----
-
-## 📌 Features
-
-- **Syllabus Parsing & Structuring**: Upload official syllabus PDFs (or paste raw text) to instantly generate ordered modules and atomic 15–45 minute topic breakdowns.
-- **Curated Video Lectures**: Relevant YouTube lectures are matched topic-by-topic so you can start studying without search distractions.
-- **On-Demand Revision Notes**: AI-generated Markdown study notes with definitions, key equations, worked examples, and revision takeaways.
-- **Diagnostic Practice MCQs**: Topic-specific multiple-choice question sets with instant answer evaluation and step-by-step explanations.
-- **AI Topic Tutor**: In-player conversational assistant grounded in the current topic context for fast doubt resolution.
-- **Study Momentum & Analytics**: Daily target plans (Default, Exam Cram, 3-Day Sprint), study streaks, XP scoring, and weak-topic identification.
-- **Cryptographic Certificates**: Downloadable formal PDF completion certificates backed by a public verification registry (`/verify/CAI-XXXX`).
+CAMPUS AI is an autonomous course generator built for college students. Instead of spending hours searching YouTube, digging through textbook chapters, and scrambling before exams, students upload their syllabus PDF and get a complete, structured learning workspace in under 60 seconds.
 
 ---
 
-## 🛠️ Tech Stack
+## ⚡ How It Works
 
-- **Framework**: [Next.js 15](https://nextjs.org/) (App Router, Server Actions)
-- **Frontend**: React 19, TypeScript, Vanilla CSS + Tailwind CSS, Framer Motion, Lucide Icons
-- **Database & Auth**: [Supabase](https://supabase.com/) (PostgreSQL with Row-Level Security, `@supabase/ssr` session middleware)
-- **AI & LLM Pipeline**: Google Gemini 3.7 / 3.6 Flash via Vercel AI SDK, with automatic Groq (`qwen/qwen3.6-27b`) fallback
-- **Context & Search**: [Tavily AI Search](https://tavily.com/) for academic context enrichment
-- **Video Sourcing**: YouTube Data API v3
-- **PDF Engine**: `@react-pdf/renderer` (Certificate PDF generator) & `pdf-parse` (Syllabus parser)
+```
+ 📄 Syllabus PDF / Text
+           │
+           ▼
+ 🧠 AI Curriculum Engine (Gemini / Groq)
+           │
+           ▼
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                         Generated Course Hub                           │
+ ├───────────────────┬───────────────────┬────────────────────────────────┤
+ │ 📚 Module Roadmap │ 🎥 Topic Lectures │ 📝 Exam Notes & Practice Sets  │
+ └───────────────────┴───────────────────┴────────────────────────────────┘
+           │
+           ▼
+ 🏆 Study Tracking ──► Verifiable Certificate with Public ID (`/verify/CAI-XXXX`)
+```
 
 ---
 
-## 🚀 Getting Started
+## ✨ Core Features
 
-### 1. Prerequisites
-
-- Node.js 18.18+ or 20+
-- npm, yarn, or pnpm
-- A free Supabase project
-- API keys for Google AI Studio / Groq, Tavily, and YouTube Data API v3
-
-### 2. Clone and Install
-
-```bash
-git clone https://github.com/vikram00014/Campus_AI.git
-cd Campus_AI
-npm install
-```
-
-### 3. Configure Environment Variables
-
-Create a `.env.local` file in the root directory:
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in your service credentials:
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-# AI LLM Providers
-GOOGLE_GENERATIVE_AI_API_KEY=AIzaSy...
-GROQ_API_KEY=gsk_...
-
-# Search & Media APIs
-TAVILY_API_KEY=tvly-...
-YOUTUBE_API_KEY=AIzaSy...
-```
-
-### 4. Setup Database Schema
-
-Run the SQL migration in your Supabase SQL Editor:
-- Open `supabase/schema.sql` and execute it in your Supabase project dashboard.
-
-### 5. Run Locally
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+- **Syllabus-to-Course Transformation**: Extracts modules and atomic 15–45 minute topic units directly from university syllabus PDFs.
+- **Curated Video Lectures**: Topic-by-topic educational video matching to start studying immediately without searching distractions.
+- **On-Demand High-Yield Notes**: Generate concise Markdown revision notes with key formulas, worked examples, and exam takeaways.
+- **Diagnostic Practice MCQs**: Topic-level practice question sets with instant grading and detailed explanations.
+- **In-Player AI Tutor**: Context-aware AI assistant grounded in the current topic for quick doubt resolution.
+- **Study Momentum & Weak Topic Focus**: Adaptive study modes (Standard, 3-Day Sprint, Exam Cram), streak counters, and revision recommendations.
+- **Cryptographic PDF Certificates**: Automated certificate generation with unique verification hashes verifiable on a public verification portal.
 
 ---
 
-## 📁 Repository Layout
+## 🛠️ Architecture & Tech Stack
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Framework** | Next.js 15 (App Router, Server Actions) & React 19 |
+| **Styling & UI** | Tailwind CSS, CSS Variables Design System, Framer Motion, Lucide Icons |
+| **Database & Auth** | Supabase (PostgreSQL with Row-Level Security, `@supabase/ssr` session management) |
+| **AI / LLM Pipeline** | Google Gemini (3.7 / 3.6 Flash) with automated Groq (`qwen/qwen3.6-27b`) fallback |
+| **Search & Retrieval** | Tavily AI Search for academic syllabus enrichment |
+| **Video Engine** | YouTube Data API v3 |
+| **Document Processing**| `@react-pdf/renderer` for certificate generation & `pdf-parse` for syllabus extraction |
+
+---
+
+## 📂 Project Architecture
 
 ```text
-├── src/
-│   ├── app/
-│   │   ├── actions/          # Server Actions (Course, Player, AI Chat, Auth)
-│   │   ├── api/certificates/ # PDF certificate generation route
-│   │   ├── auth/             # Login, signup, and session handling
-│   │   ├── courses/          # Course generation wizard & interactive player
-│   │   ├── dashboard/        # Study plans, progress, weak topics & momentum
-│   │   ├── profile/          # Student profile management
-│   │   └── verify/           # Public certificate verification portal
-│   ├── components/           # UI components, layout, navbar & theme providers
-│   ├── lib/
-│   │   ├── llm.ts            # Gemini/Groq model cascading & JSON schema engine
-│   │   ├── supabase/         # SSR & client Supabase singletons
-│   │   ├── tavily.ts         # Academic context search integration
-│   │   └── youtube.ts        # Video lecture retrieval
-│   └── middleware.ts         # Supabase session cookie refresh middleware
-├── supabase/
-│   └── schema.sql            # Core database tables, indexes & RLS policies
-└── public/                   # Static branding and assets
+src/
+├── app/
+│   ├── actions/          # Server actions for courses, notes, MCQs, chat, auth
+│   ├── api/certificates/ # PDF certificate generation endpoint
+│   ├── auth/             # Authentication flows
+│   ├── courses/          # Course generation wizard & interactive player
+│   ├── dashboard/        # Study momentum, weak topics & course library
+│   ├── profile/          # Student profile & learning goals
+│   └── verify/           # Public certificate verification
+├── components/           # UI components, course player, navbar, themes
+├── lib/                  # LLM cascades, Supabase clients, search & video helpers
+└── middleware.ts         # Session refresh & route protection
 ```
 
 ---
 
-## 🚢 Deployment (Vercel)
+## 📜 License
 
-This application is built as a full-stack Next.js App Router project and can be deployed directly to Vercel:
-
-1. Push your code to GitHub.
-2. Import the repository into [Vercel](https://vercel.com).
-3. Add the environment variables from your `.env.local`.
-4. Click **Deploy**.
-5. In Supabase Dashboard $\rightarrow$ **Authentication** $\rightarrow$ **URL Configuration**, add your production Vercel domain to **Redirect URLs**.
-
----
-
-## 📄 License
-
-MIT License. Built for students and educators.
+MIT License — Created by [Vikram Kadam](https://github.com/vikram00014).
