@@ -1,11 +1,8 @@
 "use server";
 
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { PDFParse } from "pdf-parse";
 
-// Polyfill for Node.js environments where pdf-parse (pdfjs-dist) fails
-// We run this immediately on module load.
+// Polyfill for Node.js environments where pdf-parse needs DOMMatrix / Path2D
 const globalWithPdfPolyfills = globalThis as Record<string, unknown>;
 
 if (typeof globalWithPdfPolyfills.DOMMatrix === "undefined") {
@@ -17,19 +14,6 @@ if (typeof globalWithPdfPolyfills.Path2D === "undefined") {
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
-function configurePdfWorker() {
-    const workerPath = path.join(
-        process.cwd(),
-        "node_modules",
-        "pdfjs-dist",
-        "legacy",
-        "build",
-        "pdf.worker.mjs"
-    );
-    const workerFileUrl = pathToFileURL(workerPath).toString();
-    PDFParse.setWorker(workerFileUrl);
-}
-
 /**
  * Parses the raw text out of an uploaded Syllabus PDF buffer.
  */
@@ -37,7 +21,7 @@ export async function extractTextFromPDF(formData: FormData) {
     try {
         const file = formData.get("file") as File;
         if (!file) {
-            throw new Error("No file uploaded");
+            return { success: false, error: "No file uploaded." };
         }
         if (file.type !== "application/pdf") {
             return { success: false, error: "That file isn't a PDF. Upload a PDF syllabus or paste the text instead." };
@@ -50,18 +34,15 @@ export async function extractTextFromPDF(formData: FormData) {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        // Next.js dev SSR can resolve worker path incorrectly unless we pin it.
-        configurePdfWorker();
-
-        // Parse the PDF text using pdf-parse v2 API.
+        // Parse the PDF text using pdf-parse v2 API
         const parser = new PDFParse({ data: buffer });
         const data = await parser.getText();
         await parser.destroy();
 
-        if (!data.text || data.text.trim().length < 40) {
+        if (!data.text || data.text.trim().length < 20) {
             return {
                 success: false,
-                error: "We couldn't read any text from this PDF. It may be a scanned image — paste the syllabus text instead.",
+                error: "We couldn't read text from this PDF. If it's a scanned image, please paste the syllabus text instead.",
             };
         }
 
@@ -74,7 +55,8 @@ export async function extractTextFromPDF(formData: FormData) {
         console.error("PDF Parsing Failed:", error);
         return {
             success: false,
-            error: "Could not read this PDF. Please ensure it is a valid text-based PDF, or paste the syllabus text instead."
+            error: "Could not extract text from this PDF. Please paste the syllabus text instead."
         };
     }
 }
+

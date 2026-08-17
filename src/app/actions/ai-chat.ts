@@ -20,7 +20,8 @@ export async function askTopicQuestion(
     }
 
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
     if (!user) return { success: false, error: "You must be logged in." };
 
     // Verify ownership

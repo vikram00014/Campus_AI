@@ -108,9 +108,10 @@ export async function generateCourseFromSyllabus(
         const supabase = await createClient();
 
         // Ensure user is authed
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData?.user;
         if (!user) {
-            throw new Error("You must be logged in to generate a course.");
+            return { success: false, error: "You must be logged in to generate a course. Please log in and try again." };
         }
 
         // Prevent duplicate course generation for same user + course metadata + syllabus content.

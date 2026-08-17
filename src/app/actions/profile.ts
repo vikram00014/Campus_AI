@@ -6,9 +6,8 @@ import { redirect } from "next/navigation";
 
 export async function updateProfile(formData: FormData): Promise<void> {
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
 
     if (!user) {
         redirect("/auth");

@@ -112,9 +112,8 @@ function getModeConfig(
 export async function fetchDashboardData(mode: StudyPlanMode = "default") {
     const supabase = await createClient();
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
     if (!user) return null;
 
     const { data: courses } = await supabase
@@ -288,9 +287,8 @@ export async function deleteCourse(formData: FormData): Promise<void> {
     }
 
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
 
     if (!user) {
         return;

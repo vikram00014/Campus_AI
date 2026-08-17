@@ -226,9 +226,8 @@ async function getOwnedCourseTopic(
 ): Promise<{ courseName: string; topicTitle: string; topicNotes: string | null } | null> {
     const supabase = await createClient();
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
     if (!user) {
         return null;
     }
@@ -274,9 +273,8 @@ async function validateTopicOwnership(
     topicId: string
 ): Promise<{ userId: string } | { error: string }> {
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
     if (!user) {
         return { error: "You must be logged in to update progress." };
     }
@@ -418,9 +416,8 @@ async function recalculateCourseProgress(
 export async function fetchCourseData(courseId: string): Promise<CoursePlayerData | null> {
     const supabase = await createClient();
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user;
     if (!user) {
         return null;
     }
@@ -674,9 +671,8 @@ export async function fetchTopicVideosOnDemand(
 ): Promise<FetchTopicVideosResult> {
     try {
         const supabase = await createClient();
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData?.user;
         if (!user) {
             return { success: false, error: "You must be logged in." };
         }
