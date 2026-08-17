@@ -1,9 +1,9 @@
 "use server";
 
-import { z } from "zod";
 import { searchYouTubeVideos, type YouTubeVideo } from "@/lib/youtube";
 import { createClient } from "@/lib/supabase/server";
 import { generateJson, isLlmConfigured } from "@/lib/llm";
+import { getErrorMessage } from "@/lib/utils";
 
 const courseSyllabusResponseSchema = {
     type: "object",
@@ -41,29 +41,24 @@ const courseSyllabusResponseSchema = {
     additionalProperties: false,
 };
 
-// Zod Schema representing the desired Structured Output
-const topicSchema = z.object({
-    title: z.string().describe("The title of the sub-topic"),
-    description: z.string().describe("A brief 1-sentence description of what this topic covers."),
-    type: z.enum(["video", "notes", "task"]).describe("The primary medium of this topic chunk"),
-    estimatedMinutes: z.number().describe("Estimated minutes to consume this topic"),
-});
+type ParsedTopic = {
+    title: string;
+    description: string;
+    type: "video" | "notes" | "task";
+    estimatedMinutes: number;
+};
 
-const moduleSchema = z.object({
-    title: z.string().describe("The name of the module/unit"),
-    orderIndex: z.number().describe("The ordered index of this module starting from 1"),
-    topics: z.array(topicSchema).describe("List of topics covered in this module in chronological learning order"),
-});
+type ParsedModule = {
+    title: string;
+    orderIndex: number;
+    topics: ParsedTopic[];
+};
 
-const courseSyllabusSchema = z.object({
-    modules: z.array(moduleSchema).describe("The complete list of modules extracted from the syllabus"),
-    totalEstimatedHours: z.number().describe("Total estimated hours to complete the entire course"),
-    prerequisites: z.array(z.string()).describe("Any required prior knowledge mentioned in the syllabus"),
-});
-
-type ParsedTopic = z.infer<typeof topicSchema>;
-type ParsedModule = z.infer<typeof moduleSchema>;
-type ParsedCourseSyllabus = z.infer<typeof courseSyllabusSchema>;
+type ParsedCourseSyllabus = {
+    modules: ParsedModule[];
+    totalEstimatedHours: number;
+    prerequisites: string[];
+};
 
 type EnrichedTopic = ParsedTopic & {
     videoPlaylists: YouTubeVideo[] | null;
@@ -87,13 +82,6 @@ export type GenerateCourseResult =
         success: false;
         error: string;
     };
-
-function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return "Unknown error";
-}
 
 function normalizeText(value: string): string {
     return value.replace(/\s+/g, " ").trim().toLowerCase();
@@ -168,7 +156,7 @@ ${cleanSyllabus}
                 toolName: "emit_course_structure",
                 maxTokens: 4096,
             });
-            extractionResult = courseSyllabusSchema.parse(raw);
+            extractionResult = raw as ParsedCourseSyllabus;
         } catch (llmError: unknown) {
             console.error("Course extraction error:", llmError);
             throw new Error("We could not turn this syllabus into modules. Check that the text lists units or topics, then try again.");

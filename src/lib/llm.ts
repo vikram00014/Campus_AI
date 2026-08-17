@@ -3,6 +3,7 @@ import "server-only";
 import { generateObject, generateText as generateAiText, jsonSchema } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
+import { getErrorMessage } from "@/lib/utils";
 
 export type LlmEffort = "low" | "medium" | "high";
 
@@ -11,16 +12,6 @@ export class LlmError extends Error {
         super(message);
         this.name = "LlmError";
     }
-}
-
-function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-    if (typeof error === "string") {
-        return error;
-    }
-    return "LLM request failed.";
 }
 
 export function isLlmConfigured(): boolean {

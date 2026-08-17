@@ -60,6 +60,8 @@ type TopicTab = "watch" | "read" | "practice";
 type VideoDepth = "short" | "medium" | "full";
 type PracticeDifficulty = "easy" | "medium" | "hard";
 
+interface ChatMessage { id: string; role: "user" | "ai"; content: string; }
+
 const LAST_TOPIC_KEY_PREFIX = "campus-ai-last-topic-";
 const DEFAULT_MOCK_SECONDS = 10 * 60;
 
@@ -242,7 +244,6 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
     const [isChatLoading, setIsChatLoading] = useState(false);
     const chatInputRef = useRef<HTMLInputElement>(null);
     const chatEndRef   = useRef<HTMLDivElement>(null);
-    interface ChatMessage { id: string; role: "user" | "ai"; content: string; }
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
     // Mobile sidebar state
@@ -1057,7 +1058,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                 </button>
                                             </div>
                                             {activeTopic?.notes ? (
-                                                <div className="prose prose-invert max-w-none text-sm">
+                                                <div className="notes-prose text-sm">
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                         {activeTopic.notes}
                                                     </ReactMarkdown>
@@ -1091,7 +1092,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
                             <TabsContent value="read" className="mt-0 outline-none">
                                 {activeTopic?.notes ? (
-                                    <div className="prose prose-invert max-w-none">
+                                    <div className="notes-prose">
                                         <div className="p-6 sm:p-10 rounded-2xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {activeTopic.notes}

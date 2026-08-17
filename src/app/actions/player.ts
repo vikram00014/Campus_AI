@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTrustedContext } from "@/lib/tavily";
 import { searchYouTubeVideos, type YouTubeVideo } from "@/lib/youtube";
 import { generateJson, generateText, isLlmConfigured } from "@/lib/llm";
+import { getErrorMessage } from "@/lib/utils";
 
 interface CourseRecord {
     id: string;
@@ -146,12 +147,6 @@ const practiceResponseSchema = {
     required: ["questions"],
 };
 
-function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return "Unknown error";
-}
 
 function getPracticeFallback(topicTitle: string): PracticeQuestion[] {
     return [
@@ -670,19 +665,19 @@ export async function fetchTopicVideosOnDemand(
     topicId: string
 ): Promise<FetchTopicVideosResult> {
     try {
-        const supabase = await createClient();
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData?.user;
-        if (!user) {
-            return { success: false, error: "You must be logged in." };
+        const ownership = await validateTopicOwnership(courseId, topicId);
+        if ("error" in ownership) {
+            return { success: false, error: ownership.error };
         }
 
-        // Verify course ownership
+        const supabase = await createClient();
+
+        // Fetch course name for the YouTube search query
         const { data: ownedCourse } = await supabase
             .from("courses")
             .select("id, course_name")
             .eq("id", courseId)
-            .eq("user_id", user.id)
+            .eq("user_id", ownership.userId)
             .single() as { data: { id: string; course_name: string } | null };
 
         if (!ownedCourse) {
@@ -720,3 +715,4 @@ export async function fetchTopicVideosOnDemand(
         return { success: false, error: getErrorMessage(error) || "Could not fetch videos." };
     }
 }
+

@@ -20,7 +20,7 @@ import { generateCourseFromSyllabus } from "@/app/actions/course";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { cn, getErrorMessage } from "@/lib/utils";
 
 const DRAFT_KEY = "campus-ai-create-draft-v1";
 const JOB_KEY = "campus-ai-create-job-v1";
@@ -52,10 +52,8 @@ interface PersistedJob {
 const stepLabels = ["Academic Info", "Course Name", "Syllabus"];
 const generatingPhases = ["Reading syllabus", "Structuring modules", "Finding videos", "Saving your course"];
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Course generation failed. Please try again.";
-}
+
+
 
 function formatFileSize(file: File): string {
   const mb = file.size / (1024 * 1024);

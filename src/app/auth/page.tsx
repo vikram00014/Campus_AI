@@ -6,12 +6,9 @@ import { ArrowRight, CheckCircle2, Eye, EyeOff, GraduationCap, LayoutDashboard, 
 import { login, logout, signup } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { cn, getErrorMessage } from "@/lib/utils";
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Something went wrong. Please try again.";
-}
+
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");

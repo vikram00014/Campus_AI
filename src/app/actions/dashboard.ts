@@ -118,7 +118,7 @@ export async function fetchDashboardData(mode: StudyPlanMode = "default") {
 
     const { data: courses } = await supabase
         .from("courses")
-        .select("*")
+        .select("id, user_id, year, branch, semester, course_name, completion_percentage, created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }) as { data: CourseRecord[] | null };
 
