@@ -49,16 +49,7 @@ export async function searchYouTubeVideos(
     const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
     if (!youtubeApiKey) {
-        return [
-            {
-                videoId: "mock1",
-                id: "mock1",
-                title: `${topicTitle} Explained | ${courseName}`,
-                channelTitle: "Top University Educator",
-                thumbnail: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=320&auto=format&fit=crop&q=80",
-                url: "https://www.youtube.com/watch?v=mock1",
-            },
-        ];
+        return [buildSearchStub(topicTitle, courseName)];
     }
 
     const query = encodeURIComponent(`${courseName} ${topicTitle} lecture tutorial`);
@@ -103,7 +94,24 @@ export async function searchYouTubeVideos(
             });
     } catch (error) {
         console.error("Failed to fetch from YouTube:", error);
-        return [];
+        return [buildSearchStub(topicTitle, courseName)];
     }
+}
+
+/**
+ * Builds a fallback "search stub" video when the YouTube API is unavailable or
+ * quota-exhausted. The stub has no videoId (so no iframe is shown) but carries
+ * a direct YouTube search URL the player can surface as a button.
+ */
+function buildSearchStub(topicTitle: string, courseName: string): YouTubeVideo {
+    const query = encodeURIComponent(`${courseName} ${topicTitle} lecture tutorial`);
+    return {
+        videoId: "",   // empty = player knows this is a search stub, not an embed
+        id: `search-${topicTitle}`,
+        title: `Find videos: ${topicTitle}`,
+        channelTitle: "YouTube Search",
+        thumbnail: "",
+        url: `https://www.youtube.com/results?search_query=${query}`,
+    };
 }
 

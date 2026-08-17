@@ -23,6 +23,7 @@ import {
     Menu,
     Keyboard,
     GraduationCap,
+    ExternalLink,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -150,14 +151,24 @@ function normalizePlaylistItem(item: unknown): PlaylistVideo | null {
 
     const rawVideoId = asString(record.videoId) || asString(record.id) || extractYouTubeVideoId(asString(record.url));
     const videoId = extractYouTubeVideoId(rawVideoId);
+    const url = asString(record.url);
+    const title = asString(record.title);
+
     if (!videoId) {
+        if (url && (url.includes("youtube.com") || url.includes("youtu.be"))) {
+            return {
+                videoId: "",
+                title: title || "Find lectures on YouTube",
+                url,
+            };
+        }
         return null;
     }
 
     return {
         videoId,
-        title: asString(record.title),
-        url: asString(record.url),
+        title,
+        url: url || `https://www.youtube.com/watch?v=${videoId}`,
     };
 }
 
@@ -168,8 +179,9 @@ function getTopicVideos(topic?: CourseTopic): PlaylistVideo[] {
 
     const deduped = new Map<string, PlaylistVideo>();
     normalized.forEach((video) => {
-        if (!deduped.has(video.videoId)) {
-            deduped.set(video.videoId, video);
+        const key = video.videoId || video.url || "video";
+        if (!deduped.has(key)) {
+            deduped.set(key, video);
         }
     });
 
@@ -981,59 +993,84 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             </TabsList>
 
                             <TabsContent value="watch" className="mt-0 outline-none">
-                                {primaryVideoId ? (
+                                {primaryVideo ? (
                                     <>
-                                        <div className="mb-4 flex flex-wrap gap-2 items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Depth:</label>
-                                                <div className="flex rounded-xl overflow-hidden text-sm" style={{ border: "1px solid hsl(var(--border))" }}>
-                                                    {(["short", "medium", "full"] as VideoDepth[]).map((d) => (
+                                        {primaryVideoId ? (
+                                            <>
+                                                <div className="mb-4 flex flex-wrap gap-2 items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Depth:</label>
+                                                        <div className="flex rounded-xl overflow-hidden text-sm" style={{ border: "1px solid hsl(var(--border))" }}>
+                                                            {(["short", "medium", "full"] as VideoDepth[]).map((d) => (
+                                                                <button
+                                                                    key={d}
+                                                                    onClick={() => { setVideoDepth(d); setManualVideoIndex(null); }}
+                                                                    className="px-3 py-1.5 text-xs font-semibold capitalize transition-all"
+                                                                    style={videoDepth === d
+                                                                        ? { background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))", borderLeft: "1px solid hsl(var(--primary) / 0.25)", borderRight: "1px solid hsl(var(--primary) / 0.25)" }
+                                                                        : { color: "hsl(var(--muted-foreground))" }
+                                                                    }
+                                                                >{d}</button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
                                                         <button
-                                                            key={d}
-                                                            onClick={() => { setVideoDepth(d); setManualVideoIndex(null); }}
-                                                            className="px-3 py-1.5 text-xs font-semibold capitalize transition-all"
-                                                            style={videoDepth === d
-                                                                ? { background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))", borderLeft: "1px solid hsl(var(--primary) / 0.25)", borderRight: "1px solid hsl(var(--primary) / 0.25)" }
-                                                                : { color: "hsl(var(--muted-foreground))" }
-                                                            }
-                                                        >{d}</button>
-                                                    ))}
+                                                            onClick={() => setManualVideoIndex((prev) => (prev === null ? depthVideoIndex : Math.max(0, prev - 1)))}
+                                                            disabled={!hasPrevVideo}
+                                                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
+                                                            style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
+                                                        >
+                                                            <ArrowLeft className="w-3.5 h-3.5" /> Prev Video
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setManualVideoIndex((prev) => {
+                                                                const current = prev ?? depthVideoIndex;
+                                                                return Math.min(activeTopicVideos.length - 1, current + 1);
+                                                            })}
+                                                            disabled={!hasNextVideo}
+                                                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
+                                                            style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
+                                                        >
+                                                            Next Video <ArrowRight className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => setManualVideoIndex((prev) => (prev === null ? depthVideoIndex : Math.max(0, prev - 1)))}
-                                                    disabled={!hasPrevVideo}
-                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
-                                                    style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
-                                                >
-                                                    <ArrowLeft className="w-3.5 h-3.5" /> Prev Video
-                                                </button>
-                                                <button
-                                                    onClick={() => setManualVideoIndex((prev) => {
-                                                        const current = prev ?? depthVideoIndex;
-                                                        return Math.min(activeTopicVideos.length - 1, current + 1);
-                                                    })}
-                                                    disabled={!hasNextVideo}
-                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
-                                                    style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
-                                                >
-                                                    Next Video <ArrowRight className="w-3.5 h-3.5" />
-                                                </button>
-                                            </div>
-                                        </div>
 
-                                        <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl relative" style={{ background: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))" }}>
-                                            <iframe
-                                                width="100%"
-                                                height="100%"
-                                                src={`https://www.youtube.com/embed/${primaryVideoId}?autoplay=0&rel=0`}
-                                                title={activeTopic?.title}
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                allowFullScreen
-                                                className="absolute inset-0 w-full h-full border-0"
-                                            />
-                                        </div>
+                                                <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl relative" style={{ background: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))" }}>
+                                                    <iframe
+                                                        width="100%"
+                                                        height="100%"
+                                                        src={`https://www.youtube.com/embed/${primaryVideoId}?autoplay=0&rel=0`}
+                                                        title={activeTopic?.title}
+                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                        allowFullScreen
+                                                        className="absolute inset-0 w-full h-full border-0"
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="rounded-2xl p-8 sm:p-12 text-center flex flex-col items-center justify-center" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                                                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(255, 0, 0, 0.1)", color: "#FF0000" }}>
+                                                    <PlayCircle className="w-8 h-8" />
+                                                </div>
+                                                <h3 className="text-xl font-bold mb-2" style={{ color: "hsl(var(--foreground))" }}>
+                                                    {primaryVideo.title || `${activeTopic?.title} Lectures`}
+                                                </h3>
+                                                <p className="text-sm mb-6 max-w-md" style={{ color: "hsl(var(--muted-foreground))" }}>
+                                                    Curated video search is ready. Watch top university lectures and tutorials directly on YouTube with one click.
+                                                </p>
+                                                <a
+                                                    href={primaryVideo.url || `https://www.youtube.com/results?search_query=${encodeURIComponent(courseState.course_name + " " + (activeTopic?.title || "") + " lecture")}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all shadow-md hover:opacity-90"
+                                                    style={{ background: "#FF0000", color: "#FFFFFF" }}
+                                                >
+                                                    <ExternalLink className="w-4 h-4" /> Watch on YouTube
+                                                </a>
+                                            </div>
+                                        )}
                                         <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                             <div>
                                                 <h3 className="text-base font-semibold" style={{ color: "hsl(var(--foreground))" }}>{primaryVideo?.title || activeTopic?.title}</h3>
@@ -1078,14 +1115,24 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                     <div className="rounded-2xl p-12 text-center flex flex-col items-center justify-center" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
                                         <PlayCircle className="w-12 h-12 mb-4 opacity-30" style={{ color: "hsl(var(--primary))" }} />
                                         <h3 className="text-xl font-semibold mb-2" style={{ color: "hsl(var(--foreground))" }}>No Video Loaded</h3>
-                                        <p className="mb-6 max-w-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Videos are fetched on-demand to save quota. Load one now.</p>
+                                        <p className="mb-6 max-w-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Videos are fetched on-demand to save quota. Load one now or search directly on YouTube.</p>
                                         {videosError ? (
                                             <p className="text-sm mb-3" style={{ color: "hsl(var(--destructive))" }}>{videosError}</p>
                                         ) : null}
-                                        <button onClick={handleFetchVideos} disabled={isFetchingVideos} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50" style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
-                                            {isFetchingVideos ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-                                            {isFetchingVideos ? "Finding Videos..." : "Load Videos"}
-                                        </button>
+                                        <div className="flex flex-wrap items-center justify-center gap-3">
+                                            <button onClick={handleFetchVideos} disabled={isFetchingVideos} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50" style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
+                                                {isFetchingVideos ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+                                                {isFetchingVideos ? "Finding Videos..." : "Load Videos"}
+                                            </button>
+                                            <a
+                                                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(courseState.course_name + " " + (activeTopic?.title || "") + " lecture tutorial")}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20"
+                                            >
+                                                <ExternalLink className="w-4 h-4" /> Search on YouTube
+                                            </a>
+                                        </div>
                                     </div>
                                 )}
                             </TabsContent>
