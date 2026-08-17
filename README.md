@@ -5,7 +5,7 @@ Upload a university syllabus PDF and CAMPUS AI turns it into a structured learni
 
 ## What it does
 
-- Converts raw syllabus text into a structured course using Gemini
+- Converts raw syllabus text into a structured course using Google Gemini / Groq
 - Extracts text from uploaded PDF syllabi
 - Curates YouTube videos for topics
 - Generates topic notes on demand
@@ -17,14 +17,14 @@ Upload a university syllabus PDF and CAMPUS AI turns it into a structured learni
 
 ## Tech stack
 
-- Next.js 16
+- Next.js 15
 - React 19
 - TypeScript
 - Tailwind CSS
 - Supabase Auth + Postgres + RLS
-- Gemini / Vertex AI Express
-- Tavily
-- YouTube Data API
+- Google Gemini API (`@ai-sdk/google`) & Groq (`@ai-sdk/groq`)
+- Tavily AI Search
+- YouTube Data API v3
 - React PDF Renderer
 
 ## Screens / routes
@@ -48,7 +48,8 @@ Required variables:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-VERTEX_API_KEY=
+GOOGLE_GENERATIVE_AI_API_KEY=
+GROQ_API_KEY=
 TAVILY_API_KEY=
 YOUTUBE_API_KEY=
 ```
@@ -108,12 +109,6 @@ supabase/
 public/
   *.png              image assets
 ```
-
-## Detailed project explanation
-
-For a deeper architectural walkthrough, see:
-
-- [PROJECT_EXPLANATION.md](./PROJECT_EXPLANATION.md)
 
 ## Before pushing to GitHub
 

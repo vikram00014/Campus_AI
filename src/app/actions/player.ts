@@ -1,9 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenAI, Type } from "@google/genai";
 import { getTrustedContext } from "@/lib/tavily";
 import { searchYouTubeVideos, type YouTubeVideo } from "@/lib/youtube";
+import { generateJson, generateText, isLlmConfigured } from "@/lib/llm";
 
 interface CourseRecord {
     id: string;
@@ -127,17 +127,17 @@ export type FetchTopicVideosResult =
     };
 
 const practiceResponseSchema = {
-    type: Type.OBJECT,
+    type: "object",
     properties: {
         questions: {
-            type: Type.ARRAY,
+            type: "array",
             items: {
-                type: Type.OBJECT,
+                type: "object",
                 properties: {
-                    question: { type: Type.STRING },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    answer: { type: Type.STRING },
-                    explanation: { type: Type.STRING },
+                    question: { type: "string" },
+                    options: { type: "array", items: { type: "string" } },
+                    answer: { type: "string" },
+                    explanation: { type: "string" },
                 },
                 required: ["question", "options", "answer", "explanation"],
             },
@@ -153,69 +153,71 @@ function getErrorMessage(error: unknown): string {
     return "Unknown error";
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-        return await Promise.race([
-            promise,
-            new Promise<T>((_, reject) => {
-                timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
-            }),
-        ]);
-    } finally {
-        if (timer) {
-            clearTimeout(timer);
-        }
-    }
-}
-
 function getPracticeFallback(topicTitle: string): PracticeQuestion[] {
     return [
         {
-            question: `Which statement best defines ${topicTitle}?`,
+            question: `Which statement best describes ${topicTitle}?`,
             options: [
-                `${topicTitle} is only a theoretical concept with no training objective.`,
-                `${topicTitle} is a core concept used to improve model learning behavior.`,
-                `${topicTitle} is unrelated to optimization in neural networks.`,
-                `${topicTitle} cannot be applied in modern deep learning systems.`,
+                `${topicTitle} is a core concept with a defined purpose and scope within this subject.`,
+                `${topicTitle} is a purely decorative term with no practical role.`,
+                `${topicTitle} applies only outside this field of study.`,
+                `${topicTitle} has no relationship to any other topic in this course.`,
             ],
-            answer: `${topicTitle} is a core concept used to improve model learning behavior.`,
-            explanation: "This option captures the general role of deep learning topics in training and model performance.",
+            answer: `${topicTitle} is a core concept with a defined purpose and scope within this subject.`,
+            explanation: "Course topics are introduced because they carry a specific purpose and connect to the wider syllabus.",
         },
         {
-            question: `Why is ${topicTitle} important in practical deep learning?`,
+            question: `Why does the syllabus include ${topicTitle}?`,
             options: [
-                "It helps models generalize, converge, or represent patterns effectively.",
-                "It permanently removes the need for data preprocessing.",
-                "It guarantees zero loss in every epoch.",
-                "It replaces all activation functions automatically.",
+                "It builds understanding needed for later topics and exam questions.",
+                "It removes the need to study any other topic.",
+                "It is included only for historical interest.",
+                "It replaces the need for practice problems entirely.",
             ],
-            answer: "It helps models generalize, converge, or represent patterns effectively.",
-            explanation: "Most major deep learning topics improve learning dynamics, representation quality, or generalization.",
+            answer: "It builds understanding needed for later topics and exam questions.",
+            explanation: "Syllabus topics are sequenced so each one supports the material that follows.",
         },
         {
-            question: `In an exam answer about ${topicTitle}, what should be included first?`,
+            question: `When writing an exam answer about ${topicTitle}, what should come first?`,
             options: [
-                "A precise definition and objective of the method.",
-                "Only implementation code and no concept explanation.",
-                "Only drawbacks and no use cases.",
-                "Only historical background and no technical detail.",
+                "A precise definition and the purpose of the concept.",
+                "Only a worked example with no explanation.",
+                "Only the limitations, with no definition.",
+                "Only background history, with no technical detail.",
             ],
-            answer: "A precise definition and objective of the method.",
+            answer: "A precise definition and the purpose of the concept.",
             explanation: "A clear definition and objective establish the foundation for further technical discussion.",
         },
         {
-            question: `What is the best way to validate understanding of ${topicTitle}?`,
+            question: `What is the best way to confirm you understand ${topicTitle}?`,
             options: [
-                "Apply it in a small example and analyze training behavior.",
-                "Memorize one formula without context.",
-                "Avoid comparing it with related techniques.",
-                "Ignore evaluation metrics entirely.",
+                "Apply it to a small worked example and explain each step.",
+                "Memorize one sentence without context.",
+                "Avoid comparing it with related concepts.",
+                "Skip all practice questions on the topic.",
             ],
-            answer: "Apply it in a small example and analyze training behavior.",
-            explanation: "Practical experimentation plus interpretation gives stronger understanding than rote memorization.",
+            answer: "Apply it to a small worked example and explain each step.",
+            explanation: "Applying a concept and explaining the steps tests real understanding rather than recall.",
         },
     ];
+}
+
+function sanitizePracticeQuestions(questions: unknown): PracticeQuestion[] {
+    if (!Array.isArray(questions)) return [];
+    return questions.filter((item): item is PracticeQuestion => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Partial<PracticeQuestion>;
+        return (
+            typeof candidate.question === "string" &&
+            typeof candidate.answer === "string" &&
+            typeof candidate.explanation === "string" &&
+            Array.isArray(candidate.options) &&
+            candidate.options.length >= 2 &&
+            candidate.options.every((option) => typeof option === "string") &&
+            // A question whose answer isn't among the options can never be scored correctly.
+            candidate.options.includes(candidate.answer)
+        );
+    });
 }
 
 async function getOwnedCourseTopic(
@@ -561,18 +563,12 @@ export async function generatePracticeQuestions(
             return { success: false, error: "Topic not found for this course." };
         }
 
-        if (!process.env.VERTEX_API_KEY) {
+        if (!isLlmConfigured()) {
             return { success: true, questions: getPracticeFallback(owned.topicTitle) };
         }
 
-        const ai = new GoogleGenAI({
-            apiKey: process.env.VERTEX_API_KEY,
-            vertexai: true,
-            httpOptions: { timeout: 120_000 },
-        });
-
         const context = owned.topicNotes?.trim()
-            ? owned.topicNotes.slice(0, 6000)
+            ? owned.topicNotes.slice(0, 2500)
             : await getTrustedContext(owned.topicTitle, owned.courseName).catch((contextError) => {
                 console.warn("Trusted context fetch failed for practice generation:", contextError);
                 return "";
@@ -584,7 +580,7 @@ Create a concise MCQ practice set for:
 Course: ${owned.courseName}
 Topic: ${owned.topicTitle}
 
-Use this context:
+Context:
 ${context || "No additional context available."}
 
 Requirements:
@@ -596,21 +592,17 @@ Requirements:
 `;
 
         try {
-            const aiResponse = await withTimeout(
-                ai.models.generateContent({
-                    model: "gemini-2.5-flash",
-                    contents: prompt,
-                    config: {
-                        temperature: 0.2,
-                        responseMimeType: "application/json",
-                        responseSchema: practiceResponseSchema,
-                    },
-                }),
-                30_000,
-                "Practice generation timed out."
-            );
-            const parsed = JSON.parse(aiResponse.text ?? "{}");
-            return { success: true, questions: parsed.questions };
+            const parsed = await generateJson<{ questions?: unknown }>({
+                prompt,
+                schema: practiceResponseSchema,
+                toolName: "emit_practice_questions",
+                maxTokens: 1200,
+            });
+            const questions = sanitizePracticeQuestions(parsed.questions);
+            if (questions.length === 0) {
+                return { success: true, questions: getPracticeFallback(owned.topicTitle) };
+            }
+            return { success: true, questions };
         } catch (modelParseError: unknown) {
             console.error("Structured practice generation failed, using fallback:", modelParseError);
             return { success: true, questions: getPracticeFallback(owned.topicTitle) };
@@ -635,38 +627,36 @@ export async function generateTopicNotesOnDemand(
             return { success: true, notes: owned.topicNotes };
         }
 
-        if (!process.env.VERTEX_API_KEY) {
-            return { success: false, error: "Vertex AI API key is missing. Cannot generate notes now." };
+        if (!isLlmConfigured()) {
+            return { success: false, error: "Notes generation is unavailable right now. Videos and practice still work." };
         }
 
-        const ai = new GoogleGenAI({
-            apiKey: process.env.VERTEX_API_KEY,
-            vertexai: true,
-            httpOptions: { timeout: 120_000 },
-        });
+        const trustedContext = await getTrustedContext(owned.topicTitle, owned.courseName).catch(() => "");
+        const cleanContext = trustedContext ? trustedContext.slice(0, 3000) : "";
 
-        const trustedContext = await getTrustedContext(owned.topicTitle, owned.courseName);
-        const aiResponse = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `
-You are an expert professor.
-Write complete Markdown notes for:
+        const notes = await generateText({
+            system: "You are an expert professor who writes clear, exam-focused Markdown study notes.",
+            prompt: `
+Write concise, high-yield Markdown notes for:
 Course: ${owned.courseName}
 Topic: ${owned.topicTitle}
 
 Include:
 - Core concept summary
-- Important equations/definitions
-- Examples
-- Revision bullets
+- Key equations/definitions
+- 1 concise worked example
+- Quick revision bullets
 
 Context:
-${trustedContext || "No external context provided."}
+${cleanContext || "No external context provided."}
 `,
-            config: { temperature: 0.5 },
+            maxTokens: 2500,
+            effort: "low",
         });
 
-        const notes = aiResponse.text ?? "";
+        if (!notes.trim()) {
+            return { success: false, error: "We couldn't generate notes for this topic. Videos and practice are still available." };
+        }
 
         const supabase = await createClient();
         await supabase.from("topics").update({ notes }).eq("id", topicId);
@@ -674,7 +664,7 @@ ${trustedContext || "No external context provided."}
         return { success: true, notes };
     } catch (error: unknown) {
         console.error("Failed to generate topic notes:", error);
-        return { success: false, error: getErrorMessage(error) || "Could not generate notes." };
+        return { success: false, error: "We couldn't generate notes for this topic. Videos and practice are still available." };
     }
 }
 

@@ -38,6 +38,15 @@ interface ProgressRecord {
     video_progress: number | null;
     practice_completed: boolean | null;
     created_at: string;
+    updated_at: string | null;
+}
+
+function progressDayKey(progress: ProgressRecord): string {
+    return new Date(progress.updated_at || progress.created_at).toISOString().slice(0, 10);
+}
+
+function dayKeyOffset(days: number): string {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 export interface TopicPlanItem {
@@ -136,7 +145,7 @@ export async function fetchDashboardData(mode: StudyPlanMode = "default") {
 
     const { data: progressRows } = await supabase
         .from("progress")
-        .select("topic_id, notes_completed, video_progress, practice_completed, created_at")
+        .select("topic_id, notes_completed, video_progress, practice_completed, created_at, updated_at")
         .eq("user_id", user.id) as { data: ProgressRecord[] | null };
     const safeProgress = progressRows || [];
     const progressMap = new Map(safeProgress.map((progress) => [progress.topic_id, progress]));
@@ -188,7 +197,7 @@ export async function fetchDashboardData(mode: StudyPlanMode = "default") {
     const completedDays = new Set(
         safeProgress
             .filter((progress) => isProgressCompleted(progress))
-            .map((progress) => new Date(progress.created_at).toISOString().slice(0, 10))
+            .map(progressDayKey)
     );
     const avgTopicsPerDayRaw =
         completedDays.size > 0 ? completedTopicsCount / completedDays.size : 0;
@@ -210,33 +219,32 @@ export async function fetchDashboardData(mode: StudyPlanMode = "default") {
         avgTopicsPerDay < modeConfig.dailyTargetTopics;
 
     const completedDates = Array.from(completedDays).sort((a, b) => b.localeCompare(a));
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = dayKeyOffset(0);
+    const yesterdayKey = dayKeyOffset(1);
+
+    // A streak stays alive until a full day is missed, so anchor on yesterday when
+    // today has no activity yet rather than resetting the count to zero.
     let streakDays = 0;
-    if (completedDates.length > 0) {
-        let cursor = new Date(`${todayKey}T00:00:00.000Z`);
-        for (const dateKey of completedDates) {
-            const expected = cursor.toISOString().slice(0, 10);
-            if (dateKey !== expected) {
-                break;
-            }
+    if (completedDates.includes(todayKey) || completedDates.includes(yesterdayKey)) {
+        let cursor = completedDates.includes(todayKey) ? todayKey : yesterdayKey;
+        let offset = completedDates.includes(todayKey) ? 0 : 1;
+        while (completedDates.includes(cursor)) {
             streakDays += 1;
-            cursor = new Date(cursor.getTime() - 24 * 60 * 60 * 1000);
+            offset += 1;
+            cursor = dayKeyOffset(offset);
         }
     }
 
     const todayCompletedTopics = safeProgress.filter(
-        (progress) =>
-            isProgressCompleted(progress) &&
-            new Date(progress.created_at).toISOString().slice(0, 10) === todayKey
+        (progress) => isProgressCompleted(progress) && progressDayKey(progress) === todayKey
     ).length;
 
-    const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+    const weeklyCutoffKey = dayKeyOffset(6);
     const weeklyStudyMinutes = safeProgress.reduce((total, progress) => {
         if (!isProgressCompleted(progress)) {
             return total;
         }
-        const completedAt = new Date(progress.created_at);
-        if (completedAt < sevenDaysAgo) {
+        if (progressDayKey(progress) < weeklyCutoffKey) {
             return total;
         }
         return total + (topicEstimatedMinutes.get(progress.topic_id) || 0);

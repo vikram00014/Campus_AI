@@ -8,20 +8,34 @@ export interface YouTubeVideo {
 }
 
 interface YouTubeSearchResponse {
-    items: Array<{
-        id: {
-            videoId: string;
+    items?: Array<{
+        id?: {
+            videoId?: string;
         };
-        snippet: {
-            title: string;
-            channelTitle: string;
-            thumbnails: {
-                medium: {
-                    url: string;
+        snippet?: {
+            title?: string;
+            channelTitle?: string;
+            thumbnails?: {
+                medium?: {
+                    url?: string;
+                };
+                default?: {
+                    url?: string;
                 };
             };
         };
     }>;
+}
+
+function decodeHtmlEntities(raw: string): string {
+    return raw
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)));
 }
 
 /**
@@ -35,14 +49,13 @@ export async function searchYouTubeVideos(
     const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
     if (!youtubeApiKey) {
-        console.warn("YOUTUBE_API_KEY is not set. Returning mock videos.");
         return [
             {
                 videoId: "mock1",
                 id: "mock1",
                 title: `${topicTitle} Explained | ${courseName}`,
-                channelTitle: "Mock Educator Channel",
-                thumbnail: "https://via.placeholder.com/320x180",
+                channelTitle: "Top University Educator",
+                thumbnail: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=320&auto=format&fit=crop&q=80",
                 url: "https://www.youtube.com/watch?v=mock1",
             },
         ];
@@ -62,17 +75,35 @@ export async function searchYouTubeVideos(
         }
 
         const data = (await res.json()) as YouTubeSearchResponse;
+        const rawItems = Array.isArray(data.items) ? data.items : [];
 
-        return data.items.map((item) => ({
-            videoId: item.id.videoId,
-            id: item.id.videoId,
-            title: item.snippet.title,
-            channelTitle: item.snippet.channelTitle,
-            thumbnail: item.snippet.thumbnails.medium.url,
-            url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-        }));
+        return rawItems
+            .filter((item): item is typeof item & { id: { videoId: string }; snippet: { title: string } } =>
+                Boolean(item?.id?.videoId && item?.snippet?.title)
+            )
+            .map((item) => {
+                const videoId = item.id.videoId;
+                const rawTitle = item.snippet?.title || `${topicTitle} - ${courseName}`;
+                const title = decodeHtmlEntities(rawTitle);
+                const rawChannel = item.snippet?.channelTitle || "Educator";
+                const channelTitle = decodeHtmlEntities(rawChannel);
+                const thumbnail =
+                    item.snippet?.thumbnails?.medium?.url ||
+                    item.snippet?.thumbnails?.default?.url ||
+                    `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+                return {
+                    videoId,
+                    id: videoId,
+                    title,
+                    channelTitle,
+                    thumbnail,
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                };
+            });
     } catch (error) {
         console.error("Failed to fetch from YouTube:", error);
         return [];
     }
 }
+

@@ -16,19 +16,15 @@ export default function DashboardError({
     }, [error]);
 
     return (
-        <div className="flex flex-col items-center justify-center p-12 text-center h-[calc(100vh-8rem)]">
-            <div className="bg-red-500/10 p-6 rounded-full mb-6">
-                <AlertCircle className="w-16 h-16 text-red-500" />
+        <div className="flex h-[calc(100vh-8rem)] flex-col items-center justify-center bg-background p-12 text-center">
+            <div className="mb-6 rounded-xl bg-destructive/10 p-5 text-destructive">
+                <AlertCircle className="h-10 w-10" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Something went wrong!</h2>
-            <p className="text-muted-foreground mb-8 max-w-md">
-                We encountered an error loading your dashboard data. This might be a temporary hiccup with the database connection.
+            <h2 className="mb-2 text-2xl font-bold">Dashboard could not load</h2>
+            <p className="mb-8 max-w-md text-sm leading-6 text-muted-foreground">
+                Your courses are still safe. The dashboard data could not be loaded right now.
             </p>
-            <div className="flex gap-4">
-                <Button onClick={() => reset()} variant="default">
-                    Try again
-                </Button>
-            </div>
+            <Button onClick={() => reset()}>Try again</Button>
         </div>
     );
 }

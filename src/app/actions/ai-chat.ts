@@ -1,17 +1,12 @@
 "use server";
 
-import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@/lib/supabase/server";
 import { getTrustedContext } from "@/lib/tavily";
+import { generateText, isLlmConfigured } from "@/lib/llm";
 
 export type AskTopicResult =
   | { success: true; answer: string }
   | { success: false; error: string };
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
-}
 
 export async function askTopicQuestion(
   courseId: string,
@@ -19,6 +14,11 @@ export async function askTopicQuestion(
   question: string
 ): Promise<{ success: true; answer: string } | { success: false; error: string }> {
   try {
+    const trimmedQuestion = question.trim().slice(0, 1000);
+    if (!trimmedQuestion) {
+      return { success: false, error: "Please type a question first." };
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "You must be logged in." };
@@ -47,15 +47,9 @@ export async function askTopicQuestion(
 
     if (!topic) return { success: false, error: "Topic not found." };
 
-    if (!process.env.VERTEX_API_KEY) {
-      return { success: false, error: "AI service is not configured." };
+    if (!isLlmConfigured()) {
+      return { success: false, error: "The AI tutor is unavailable right now. Notes and practice still work." };
     }
-
-    const ai = new GoogleGenAI({
-      apiKey: process.env.VERTEX_API_KEY,
-      vertexai: true,
-      httpOptions: { timeout: 60_000 },
-    });
 
     // Build context from notes + trusted search
     let context = topic.notes?.trim() || "";
@@ -63,30 +57,27 @@ export async function askTopicQuestion(
       context = await getTrustedContext(topic.title, ownedCourse.course_name).catch(() => "");
     }
 
-    const systemPrompt = `You are an expert AI tutor helping a student understand "${topic.title}" 
-from the course "${ownedCourse.course_name}".
+    const systemPrompt = `You are an expert AI tutor helping a student understand "${topic.title}" from the course "${ownedCourse.course_name}".
 
 Topic Context:
-${context.slice(0, 4000) || "No additional context available."}
+${context.slice(0, 1800) || "No additional context available."}
 
 Guidelines:
-- Answer clearly and precisely in 2-5 sentences max unless a detailed explanation is needed
-- Use examples when helpful
+- Answer clearly and concisely in 2-4 sentences
+- Use a short example if helpful
 - Focus on exam-relevance
-- If the question is unrelated to the topic, gently redirect
-- Format your response in clean Markdown
-`;
+- Format in clean Markdown`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `${systemPrompt}\n\nStudent Question: ${question}`,
-      config: { temperature: 0.4 },
+    const answer = await generateText({
+      system: systemPrompt,
+      prompt: trimmedQuestion,
+      maxTokens: 600,
+      effort: "low",
     });
 
-    const answer = response.text?.trim() || "I couldn't generate an answer. Please try again.";
     return { success: true, answer };
   } catch (error: unknown) {
     console.error("AI chat error:", error);
-    return { success: false, error: getErrorMessage(error) || "Failed to get AI answer." };
+    return { success: false, error: "The tutor couldn't answer that just now. Please try again." };
   }
 }

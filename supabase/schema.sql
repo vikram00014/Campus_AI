@@ -65,8 +65,30 @@ create table if not exists public.progress (
   video_progress integer default 0 check (video_progress between 0 and 100),
   practice_completed boolean default false,
   created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now()),
   primary key (user_id, topic_id)
 );
+
+-- Streaks and daily study stats key off when progress last changed, not when the
+-- row was first created, so backfill and maintain updated_at.
+alter table public.progress
+  add column if not exists updated_at timestamptz not null default timezone('utc'::text, now());
+
+create or replace function public.touch_progress_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := timezone('utc'::text, now());
+  return new;
+end;
+$$;
+
+drop trigger if exists progress_set_updated_at on public.progress;
+create trigger progress_set_updated_at
+  before update on public.progress
+  for each row
+  execute function public.touch_progress_updated_at();
 
 -- ------------------------------------------------------------
 -- 5) Certificates

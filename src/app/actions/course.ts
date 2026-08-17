@@ -1,39 +1,29 @@
 "use server";
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { z } from "zod";
 import { searchYouTubeVideos, type YouTubeVideo } from "@/lib/youtube";
 import { createClient } from "@/lib/supabase/server";
+import { generateJson, isLlmConfigured } from "@/lib/llm";
 
-// Vertex AI Express client
-const ai = new GoogleGenAI({
-    apiKey: process.env.VERTEX_API_KEY,
-    vertexai: true,
-    httpOptions: { timeout: 120_000 }, // 2-minute timeout per request
-});
-
-const MODEL = "gemini-2.5-flash";
-
-// Structured output schema for Vertex AI generateContent
 const courseSyllabusResponseSchema = {
-    type: Type.OBJECT,
+    type: "object",
     properties: {
         modules: {
-            type: Type.ARRAY,
+            type: "array",
             items: {
-                type: Type.OBJECT,
+                type: "object",
                 properties: {
-                    title: { type: Type.STRING },
-                    orderIndex: { type: Type.NUMBER },
+                    title: { type: "string" },
+                    orderIndex: { type: "number" },
                     topics: {
-                        type: Type.ARRAY,
+                        type: "array",
                         items: {
-                            type: Type.OBJECT,
+                            type: "object",
                             properties: {
-                                title: { type: Type.STRING },
-                                description: { type: Type.STRING },
-                                type: { type: Type.STRING, enum: ["video", "notes", "task"] },
-                                estimatedMinutes: { type: Type.NUMBER },
+                                title: { type: "string" },
+                                description: { type: "string" },
+                                type: { type: "string", enum: ["video", "notes", "task"] },
+                                estimatedMinutes: { type: "number" },
                             },
                             required: ["title", "description", "type", "estimatedMinutes"],
                         },
@@ -42,8 +32,8 @@ const courseSyllabusResponseSchema = {
                 required: ["title", "orderIndex", "topics"],
             },
         },
-        totalEstimatedHours: { type: Type.NUMBER },
-        prerequisites: { type: Type.ARRAY, items: { type: Type.STRING } },
+        totalEstimatedHours: { type: "number" },
+        prerequisites: { type: "array", items: { type: "string" } },
     },
     required: ["modules", "totalEstimatedHours", "prerequisites"],
 };
@@ -150,32 +140,34 @@ export async function generateCourseFromSyllabus(
             };
         }
 
+        const cleanSyllabus = syllabusRawText.trim().slice(0, 12000);
         const prompt = `
-      You are an expert curriculum designer for university engineering students.
-      Given the following raw syllabus text for the course "${courseName}", extract the hierarchical structure of Modules and Topics.
-      Break down each module into atomic topics that take roughly 15-45 minutes to learn.
-      Return the output strictly in the requested JSON structure.
-      
-      RAW SYLLABUS:
-      ${syllabusRawText}
-    `;
+You are an expert curriculum designer for university engineering students.
+Given the following syllabus for "${courseName}", extract the hierarchical structure of Modules and Topics.
+Break down each module into atomic topics (15-45 minutes each).
+Return strictly the requested JSON structure.
+
+SYLLABUS:
+${cleanSyllabus}
+`;
 
         // 1. Generate Structured Course Skeleton
+        if (!isLlmConfigured()) {
+            throw new Error("The AI service is not configured. Please contact support.");
+        }
+
         let extractionResult: ParsedCourseSyllabus;
         try {
-            const aiResponse = await ai.models.generateContent({
-                model: MODEL,
-                contents: prompt,
-                config: {
-                    temperature: 0.1,
-                    responseMimeType: "application/json",
-                    responseSchema: courseSyllabusResponseSchema,
-                },
+            const raw = await generateJson<unknown>({
+                prompt,
+                schema: courseSyllabusResponseSchema,
+                toolName: "emit_course_structure",
+                maxTokens: 4096,
             });
-            extractionResult = courseSyllabusSchema.parse(JSON.parse(aiResponse.text ?? "{}"));
+            extractionResult = courseSyllabusSchema.parse(raw);
         } catch (llmError: unknown) {
-            console.error("Gemini Extraction Error:", llmError);
-            throw new Error(`AI Parsing Error: ${getErrorMessage(llmError) || "Failed to structure syllabus into modules/topics."}`);
+            console.error("Course extraction error:", llmError);
+            throw new Error("We could not turn this syllabus into modules. Check that the text lists units or topics, then try again.");
         }
 
         // 2. Augment with YouTube videos only (notes are generated on-demand in the player).

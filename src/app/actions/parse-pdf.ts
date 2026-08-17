@@ -15,12 +15,7 @@ if (typeof globalWithPdfPolyfills.Path2D === "undefined") {
     globalWithPdfPolyfills.Path2D = class { };
 }
 
-function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return "Unknown error";
-}
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 function configurePdfWorker() {
     const workerPath = path.join(
@@ -44,6 +39,12 @@ export async function extractTextFromPDF(formData: FormData) {
         if (!file) {
             throw new Error("No file uploaded");
         }
+        if (file.type !== "application/pdf") {
+            return { success: false, error: "That file isn't a PDF. Upload a PDF syllabus or paste the text instead." };
+        }
+        if (file.size > MAX_PDF_BYTES) {
+            return { success: false, error: "That PDF is larger than 10 MB. Try a smaller file or paste the syllabus text." };
+        }
 
         // Convert Next.js File / Blob to Node.js Buffer
         const arrayBuffer = await file.arrayBuffer();
@@ -57,6 +58,13 @@ export async function extractTextFromPDF(formData: FormData) {
         const data = await parser.getText();
         await parser.destroy();
 
+        if (!data.text || data.text.trim().length < 40) {
+            return {
+                success: false,
+                error: "We couldn't read any text from this PDF. It may be a scanned image — paste the syllabus text instead.",
+            };
+        }
+
         return {
             success: true,
             text: data.text,
@@ -66,7 +74,7 @@ export async function extractTextFromPDF(formData: FormData) {
         console.error("PDF Parsing Failed:", error);
         return {
             success: false,
-            error: `Could not read the PDF properly. Please ensure it is a valid text-based PDF. (${getErrorMessage(error)})`
+            error: "Could not read this PDF. Please ensure it is a valid text-based PDF, or paste the syllabus text instead."
         };
     }
 }

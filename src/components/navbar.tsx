@@ -1,263 +1,218 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  GraduationCap, BookOpen, LayoutDashboard, LogOut,
-  ShieldCheck, UserCircle2, Menu, X, Sparkles, ChevronDown,
+  BookOpen,
+  GraduationCap,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  ShieldCheck,
+  UserCircle2,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { logout } from "@/app/actions/auth";
 import type { User } from "@supabase/supabase-js";
+import { logout } from "@/app/actions/auth";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/courses/create", label: "Generate Course", icon: BookOpen,       authRequired: true  },
-  { href: "/dashboard",      label: "Dashboard",       icon: LayoutDashboard, authRequired: true  },
-  { href: "/profile",        label: "Profile",         icon: UserCircle2,    authRequired: true  },
-  { href: "/verify",         label: "Verify",          icon: ShieldCheck,    authRequired: false },
+  { href: "/courses/create", label: "Generate Course", icon: BookOpen, authRequired: true },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, authRequired: true },
+  { href: "/profile", label: "Profile", icon: UserCircle2, authRequired: true },
+  { href: "/verify", label: "Verify", icon: ShieldCheck, authRequired: false },
 ];
 
 export default function Navbar({ user }: { user: User | null }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled,   setScrolled]   = useState(false);
   const pathname = usePathname();
-
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  const visibleLinks = navLinks.filter((link) => !link.authRequired || user);
+  const initials =
+    (user?.user_metadata?.full_name as string)?.[0]?.toUpperCase() ||
+    user?.email?.[0]?.toUpperCase() ||
+    "S";
+  const displayName = (user?.user_metadata?.full_name as string) || user?.email || "Student";
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 16);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [mobileOpen]);
-
-  const visibleLinks = navLinks.filter((l) => !l.authRequired || !!user);
-  const initials =
-    (user?.user_metadata?.full_name as string)?.[0]?.toUpperCase() ||
-    user?.email?.[0]?.toUpperCase() || "U";
-  const displayName = (user?.user_metadata?.full_name as string) || user?.email || "";
 
   return (
     <>
-      {/* ── HEADER ── */}
-      <motion.header
-        initial={{ y: -16, opacity: 0 }}
-        animate={{ y: 0,   opacity: 1  }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-        className="sticky top-0 z-50 w-full transition-all duration-300"
-        style={{
-          background: scrolled ? "rgba(14,19,31,0.92)" : "rgba(14,19,31,0.6)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderBottom: scrolled ? "1px solid rgba(255,255,255,0.06)" : "1px solid transparent",
-          boxShadow: "none",
-        }}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex h-16 items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group shrink-0">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200"
-              style={{ background: "rgba(76,215,246,0.12)", border: "1px solid rgba(76,215,246,0.2)" }}
-            >
-              <GraduationCap className="w-5 h-5 text-[#4cd7f6]" />
-            </div>
-            <span className="font-extrabold text-lg tracking-tight">
-              CAMPUS <span className="text-[#4cd7f6]">AI</span>
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/90 backdrop-blur-md">
+        <div className="app-shell flex h-16 items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-90">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/20">
+              <GraduationCap className="h-5 w-5" />
+            </span>
+            <span className="text-base font-bold tracking-tight">
+              CAMPUS <span className="text-primary">AI</span>
             </span>
           </Link>
 
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden items-center gap-1 md:flex">
             {visibleLinks.map((link) => {
-              const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+              const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200"
-                  style={{
-                    color: isActive ? "#4cd7f6" : "#bcc9cd",
-                    background: isActive ? "rgba(76,215,246,0.14)" : "transparent",
-                    border: isActive ? "1px solid rgba(76,215,246,0.2)" : "1px solid transparent",
-                  }}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground",
+                    isActive && "bg-muted text-foreground font-semibold shadow-xs"
+                  )}
                 >
-                  <link.icon className="w-4 h-4" />
+                  <link.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
                   {link.label}
                 </Link>
               );
             })}
           </nav>
 
-          {/* Desktop Actions */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden items-center gap-2 md:flex">
+            <ThemeToggle />
             {user ? (
               <div className="flex items-center gap-2">
-                {/* Avatar pill */}
-                <div
-                  className="flex items-center gap-2.5 px-3 py-1.5 rounded-full cursor-default"
-                  style={{ background: "rgba(76,215,246,0.07)", border: "1px solid rgba(76,215,246,0.15)" }}
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-1.5 text-sm font-medium transition-all hover:border-primary/40 hover:shadow-xs"
                 >
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-[#003640]"
-                    style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)" }}
-                  >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
                     {initials}
-                  </div>
-                  <span className="text-sm font-medium text-[#dee2f3] hidden sm:block max-w-[120px] truncate">
-                    {displayName}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-[#bcc9cd]" />
-                </div>
-
-                {/* Logout */}
+                  <span className="max-w-36 truncate font-medium">{displayName}</span>
+                </Link>
                 <form action={logout}>
-                  <button
-                    type="submit"
-                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 hover:bg-red-500/10 hover:border-red-400/30"
-                    style={{ border: "1px solid rgba(239,68,68,0.15)" }}
-                    title="Sign out"
-                  >
-                    <LogOut className="w-4 h-4 text-red-400" />
-                  </button>
+                  <Button type="submit" variant="ghost" size="icon" aria-label="Sign out" className="h-9 w-9 text-muted-foreground hover:text-foreground">
+                    <LogOut className="h-4 w-4" />
+                  </Button>
                 </form>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/auth">
-                  <button
-                    className="px-4 py-2 rounded-xl text-sm font-medium text-[#bcc9cd] transition-all duration-200 hover:bg-white/5 hover:text-[#dee2f3]"
-                    style={{ border: "1px solid rgba(255,255,255,0.07)" }}
-                  >
-                    Log in
-                  </button>
-                </Link>
-                <Link href="/auth">
-                  <button className="btn-primary flex items-center gap-1.5 px-4 py-2 text-sm font-bold">
-                    <Sparkles className="w-4 h-4" />
-                    Get Started
-                  </button>
-                </Link>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/auth">Log in</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/auth">Get started</Link>
+                </Button>
               </div>
             )}
           </div>
 
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden w-10 h-10 rounded-xl flex items-center justify-center transition-all"
-            style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-            onClick={() => setMobileOpen((v) => !v)}
-            aria-label={mobileOpen ? "Close menu" : "Open menu"}
-          >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-1.5 md:hidden">
+            <ThemeToggle />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => setMobileOpen((open) => !open)}
+              aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            >
+              {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
-      </motion.header>
+      </header>
 
-      {/* ── MOBILE DRAWER ── */}
       <AnimatePresence>
         {mobileOpen && (
           <>
-            {/* Backdrop */}
-            <motion.div
+            <motion.button
+              type="button"
+              aria-label="Close menu backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-xs md:hidden"
               onClick={() => setMobileOpen(false)}
             />
-            {/* Drawer */}
-            <motion.div
+            <motion.aside
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed top-0 right-0 z-50 h-full w-72 flex flex-col md:hidden"
-              style={{
-                background: "rgba(14,19,31,0.97)",
-                backdropFilter: "blur(24px)",
-                borderLeft: "1px solid rgba(255,255,255,0.07)",
-              }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="fixed right-0 top-0 z-50 flex h-full w-72 max-w-[85vw] flex-col border-l border-border bg-background shadow-xl md:hidden"
             >
-              {/* Drawer header */}
-              <div className="flex items-center justify-between p-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex h-16 items-center justify-between border-b border-border px-5">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(76,215,246,0.12)", border: "1px solid rgba(76,215,246,0.25)" }}>
-                    <GraduationCap className="w-4 h-4 text-[#4cd7f6]" />
-                  </div>
-                  <span className="font-extrabold">CAMPUS <span className="text-[#4cd7f6]">AI</span></span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                    <GraduationCap className="h-4 w-4" />
+                  </span>
+                  <span className="font-bold tracking-tight">CAMPUS AI</span>
                 </div>
-                <button onClick={() => setMobileOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5" style={{ background: "rgba(255,255,255,0.05)" }}>
-                  <X className="w-4 h-4" />
-                </button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
 
-              {/* Nav links */}
-              <nav className="flex-1 p-5 space-y-1 overflow-y-auto">
+              <nav className="flex-1 space-y-1 p-3">
                 {visibleLinks.map((link) => {
-                  const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+                  const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
                   return (
                     <Link
                       key={link.href}
                       href={link.href}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all"
-                      style={{
-                        color: isActive ? "#4cd7f6" : "#bcc9cd",
-                        background: isActive ? "rgba(76,215,246,0.12)" : "transparent",
-                        border: isActive ? "1px solid rgba(76,215,246,0.18)" : "1px solid transparent",
-                      }}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                        isActive && "bg-muted text-foreground font-semibold"
+                      )}
                     >
-                      <link.icon className="w-4 h-4" />
+                      <link.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
                       {link.label}
                     </Link>
                   );
                 })}
               </nav>
 
-              {/* Drawer footer */}
-              <div className="p-5 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="border-t border-border p-4">
                 {user ? (
-                  <>
-                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "rgba(76,215,246,0.05)", border: "1px solid rgba(76,215,246,0.1)" }}>
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-[#003640]" style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)" }}>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                         {initials}
-                      </div>
-                      <div className="overflow-hidden">
-                        <p className="text-sm font-semibold truncate">{displayName}</p>
-                        <p className="text-xs text-[#bcc9cd] truncate">{user.email}</p>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{displayName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                       </div>
                     </div>
-                    <form action={logout} className="w-full">
-                      <button type="submit" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-400 transition-all hover:bg-red-500/10" style={{ border: "1px solid rgba(239,68,68,0.2)" }}>
-                        <LogOut className="w-4 h-4" /> Sign Out
-                      </button>
+                    <form action={logout}>
+                      <Button type="submit" variant="outline" className="w-full justify-center">
+                        <LogOut className="h-4 w-4" />
+                        Sign out
+                      </Button>
                     </form>
-                  </>
+                  </div>
                 ) : (
-                  <div className="space-y-2">
-                    <Link href="/auth" className="block">
-                      <button className="w-full py-2.5 rounded-xl text-sm font-medium text-[#dee2f3] transition-all hover:bg-white/5" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-                        Log In
-                      </button>
-                    </Link>
-                    <Link href="/auth" className="block">
-                      <button className="btn-primary w-full py-2.5 text-sm font-bold flex items-center justify-center gap-2">
-                        <Sparkles className="w-4 h-4" /> Sign Up Free
-                      </button>
-                    </Link>
+                  <div className="grid gap-2">
+                    <Button asChild variant="outline" className="w-full justify-center">
+                      <Link href="/auth">Log in</Link>
+                    </Button>
+                    <Button asChild className="w-full justify-center">
+                      <Link href="/auth">Get started</Link>
+                    </Button>
                   </div>
                 )}
               </div>
-            </motion.div>
+            </motion.aside>
           </>
         )}
       </AnimatePresence>
     </>
   );
 }
+
+

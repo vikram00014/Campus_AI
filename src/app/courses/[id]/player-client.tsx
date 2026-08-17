@@ -39,6 +39,7 @@ import {
     type PracticeQuestion,
 } from "@/app/actions/player";
 import { askTopicQuestion } from "@/app/actions/ai-chat";
+import { useToast } from "@/components/ui/toast";
 
 interface PlayerProps {
     courseData: CoursePlayerData;
@@ -210,6 +211,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         courseData.modules[0];
     const initialTopic = initialModule?.topics[0];
 
+    const { showToast } = useToast();
     const [courseState, setCourseState] = useState<CoursePlayerData>(courseData);
     const [activeModule, setActiveModule] = useState<CourseModule | undefined>(initialModule);
     const [activeTopic, setActiveTopic] = useState<CourseTopic | undefined>(initialTopic);
@@ -250,9 +252,22 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
     const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
     const lastTopicKey = `${LAST_TOPIC_KEY_PREFIX}${courseState.id}`;
+    const tabByTopicRef = useRef<Record<string, TopicTab>>({});
 
+    // Keyed on the topic id, not the topic object: progress syncs replace the
+    // module tree and would otherwise reset the tab mid-study.
     useEffect(() => {
-        setActiveTab(getPreferredTab(activeTopic));
+        if (!activeTopic) return;
+        const remembered = tabByTopicRef.current[activeTopic.id];
+        setActiveTab(remembered ?? getPreferredTab(activeTopic));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTopic?.id]);
+
+    const selectTab = useCallback((tab: TopicTab) => {
+        setActiveTab(tab);
+        if (activeTopic) {
+            tabByTopicRef.current[activeTopic.id] = tab;
+        }
     }, [activeTopic]);
 
     useEffect(() => {
@@ -506,16 +521,43 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
         setActionError(null);
         setIsSyncingProgress(true);
+
+        // Optimistic: reflect the toggle immediately, then reconcile or roll back.
+        const snapshot = courseState;
+        const optimisticPatch = (topic: CourseTopic): CourseTopic => ({
+            ...topic,
+            notesCompleted: updates.notesCompleted ?? topic.notesCompleted,
+            practiceCompleted: updates.practiceCompleted ?? topic.practiceCompleted,
+            videoProgress: updates.videoProgress ?? topic.videoProgress,
+        });
+        setCourseState((prev) => ({
+            ...prev,
+            modules: prev.modules.map((module) => ({
+                ...module,
+                topics: module.topics.map((topic) =>
+                    topic.id === activeTopic.id ? optimisticPatch(topic) : topic
+                ),
+            })),
+        }));
+        setActiveTopic((prev) => (prev ? optimisticPatch(prev) : prev));
+
         const result = await updateTopicProgress(courseState.id, activeTopic.id, updates);
         setIsSyncingProgress(false);
 
         if (!result.success) {
+            setCourseState(snapshot);
+            setActiveTopic(
+                snapshot.modules
+                    .flatMap((module) => module.topics)
+                    .find((topic) => topic.id === activeTopic.id)
+            );
             setActionError(result.error);
+            showToast("Couldn't save your progress. Please try again.", "error");
             return;
         }
 
         applyProgressResult(result.modules, result.completionPercentage, { keepCurrentTopic: true });
-    }, [activeTopic, applyProgressResult, courseState.id, isSyncingProgress]);
+    }, [activeTopic, applyProgressResult, courseState, isSyncingProgress, showToast]);
 
     const handleMarkComplete = async () => {
         if (!activeTopic || activeTopic.isCompleted || isCompleting) {
@@ -529,9 +571,16 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
         if (!result.success) {
             setActionError(result.error);
+            showToast("Couldn't mark this topic complete.", "error");
             return;
         }
 
+        showToast(
+            result.completionPercentage === 100
+                ? "Course complete. Your certificate is ready."
+                : "Topic marked complete.",
+            "success"
+        );
         applyProgressResult(result.modules, result.completionPercentage, { jumpToNextIncomplete: true });
     };
 
@@ -572,11 +621,12 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
         if (!result.success) {
             setVideosError(result.error);
+            showToast(result.error, "error");
             return;
         }
 
         if (result.videos.length === 0) {
-            setVideosError("No YouTube videos found for this topic.");
+            setVideosError("No videos found for this topic. Notes and practice are still available.");
             return;
         }
 
@@ -608,8 +658,11 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
         if (!result.success) {
             setNotesError(result.error);
+            showToast(result.error, "error");
             return;
         }
+
+        showToast("Notes generated.", "success");
 
         setCourseState((prev) => ({
             ...prev,
@@ -621,7 +674,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
             })),
         }));
         setActiveTopic((prev) => (prev ? { ...prev, notes: result.notes } : prev));
-        setActiveTab("read");
+        selectTab("read");
     };
 
     const handleSubmitMock = async () => {
@@ -660,6 +713,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         }
     };
 
+
     // Scroll to bottom of chat when messages update
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -669,7 +723,8 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         if (!activeTopic) return;
         setChatQuestion("");
         setChatMessages([]);
-    }, [activeTopic]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTopic?.id]);
 
     useEffect(() => {
         if (isChatOpen) chatInputRef.current?.focus();
@@ -682,18 +737,18 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
     // Sidebar content (reusable for desktop + mobile drawer)
     const SidebarContent = (
         <>
-            <div className="p-4 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="p-4 shrink-0" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
                 <div className="flex items-center gap-2 mb-3">
-                    <GraduationCap className="w-4 h-4 shrink-0" style={{ color: "#4cd7f6" }} />
-                    <h2 className="font-bold text-base truncate" style={{ color: "#dee2f3" }} title={courseState.course_name}>{courseState.course_name}</h2>
+                    <GraduationCap className="w-4 h-4 shrink-0" style={{ color: "hsl(var(--primary))" }} />
+                    <h2 className="font-bold text-base truncate" style={{ color: "hsl(var(--foreground))" }} title={courseState.course_name}>{courseState.course_name}</h2>
                 </div>
                 <div className="flex items-center gap-2 mb-1">
-                    <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <div className="flex-1 h-1.5 rounded-full" style={{ background: "hsl(var(--border))" }}>
                         <div className="h-1.5 rounded-full progress-glow transition-all duration-500" style={{ width: `${courseState.completion_percentage}%` }} />
                     </div>
-                    <span className="text-xs font-mono font-semibold" style={{ color: "#4cd7f6" }}>{courseState.completion_percentage}%</span>
+                    <span className="text-xs font-mono font-semibold" style={{ color: "hsl(var(--primary))" }}>{courseState.completion_percentage}%</span>
                 </div>
-                <p className="text-xs" style={{ color: "#bcc9cd" }}>{courseState.modules.length} modules</p>
+                <p className="text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>{courseState.modules.length} modules</p>
             </div>
 
             <ScrollArea className="flex-1">
@@ -712,11 +767,18 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                             }
                                         }
                                     }}
+                                    disabled={module.status === "locked"}
+                                    aria-disabled={module.status === "locked"}
+                                    title={
+                                        module.status === "locked"
+                                            ? "Finish every topic in the previous module to unlock this one."
+                                            : module.title
+                                    }
                                     className="w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-all duration-200"
                                     style={{
-                                        background: isModuleActive ? "rgba(76,215,246,0.1)" : "transparent",
-                                        border: isModuleActive ? "1px solid rgba(76,215,246,0.2)" : "1px solid transparent",
-                                        color: isModuleActive ? "#4cd7f6" : "#bcc9cd",
+                                        background: isModuleActive ? "hsl(var(--primary) / 0.1)" : "transparent",
+                                        border: isModuleActive ? "1px solid hsl(var(--primary) / 0.2)" : "1px solid transparent",
+                                        color: isModuleActive ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
                                         opacity: module.status === "locked" ? 0.5 : 1,
                                         cursor: module.status === "locked" ? "not-allowed" : "pointer",
                                     }}
@@ -726,12 +788,12 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                             className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold"
                                             style={{
                                                 background: module.status === "completed"
-                                                    ? "linear-gradient(135deg,#acedff,#4cd7f6)"
+                                                    ? "hsl(var(--primary))"
                                                     : isModuleActive || module.status === "in_progress"
-                                                        ? "rgba(76,215,246,0.12)"
-                                                        : "rgba(255,255,255,0.06)",
-                                                color: module.status === "completed" ? "#003640" : isModuleActive ? "#4cd7f6" : "#bcc9cd",
-                                                border: (isModuleActive || module.status === "in_progress") && module.status !== "completed" ? "2px solid rgba(76,215,246,0.4)" : "2px solid transparent",
+                                                        ? "hsl(var(--primary) / 0.12)"
+                                                        : "hsl(var(--border))",
+                                                color: module.status === "completed" ? "hsl(var(--primary-foreground))" : isModuleActive ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                                                border: (isModuleActive || module.status === "in_progress") && module.status !== "completed" ? "2px solid hsl(var(--primary) / 0.4)" : "2px solid transparent",
                                             }}
                                         >
                                             {module.status === "completed" ? <CheckCircle2 className="w-3.5 h-3.5" /> : i + 1}
@@ -747,7 +809,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                 </button>
 
                                 {isModuleActive && module.status !== "locked" && (
-                                <div className="ml-10 space-y-0.5 pl-2" style={{ borderLeft: "1px solid rgba(76,215,246,0.15)" }}>
+                                <div className="ml-10 space-y-0.5 pl-2" style={{ borderLeft: "1px solid hsl(var(--primary) / 0.15)" }}>
                                         {module.topics.map((topic) => {
                                             const isTopicActive = activeTopic?.id === topic.id;
                                             const hasTopicVideos = getTopicVideos(topic).length > 0;
@@ -762,19 +824,19 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                     }}
                                                     className="w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-all duration-150"
                                                     style={{
-                                                        background: isTopicActive ? "rgba(76,215,246,0.12)" : "transparent",
-                                                        border: isTopicActive ? "1px solid rgba(76,215,246,0.2)" : "1px solid transparent",
-                                                        color: isTopicActive ? "#dee2f3" : "#bcc9cd",
+                                                        background: isTopicActive ? "hsl(var(--primary) / 0.12)" : "transparent",
+                                                        border: isTopicActive ? "1px solid hsl(var(--primary) / 0.2)" : "1px solid transparent",
+                                                        color: isTopicActive ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
                                                         fontWeight: isTopicActive ? 600 : 400,
                                                     }}
                                                 >
                                                     {topic.isCompleted
-                                                        ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: "#34d399" }} />
+                                                        ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(var(--success))" }} />
                                                         : hasTopicVideos
-                                                            ? <PlayCircle className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(76,215,246,0.6)" }} />
+                                                            ? <PlayCircle className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(var(--primary) / 0.6)" }} />
                                                             : topic.notes
-                                                                ? <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "#bcc9cd" }} />
-                                                                : <CheckSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "#bcc9cd" }} />
+                                                                ? <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(var(--muted-foreground))" }} />
+                                                                : <CheckSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(var(--muted-foreground))" }} />
                                                     }
                                                     <span className="truncate max-w-[150px]">{topic.title}</span>
                                                 </button>
@@ -793,7 +855,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
     return (
         <div className="flex h-[calc(100vh-4rem)] w-full overflow-hidden relative">
             {/* Desktop Sidebar */}
-            <div className="w-72 flex-col h-full hidden md:flex shrink-0" style={{ borderRight: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+            <div className="w-72 flex-col h-full hidden md:flex shrink-0" style={{ borderRight: "1px solid hsl(var(--border))", background: "hsl(var(--border) / 0.5)" }}>
                 {SidebarContent}
             </div>
 
@@ -827,8 +889,8 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                 )}
             </AnimatePresence>
 
-            <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ background: "#0e131f" }}>
-                <header className="h-14 flex items-center px-3 md:px-5 justify-between shrink-0 gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ background: "hsl(var(--background))" }}>
+                <header className="h-14 flex items-center px-3 md:px-5 justify-between shrink-0 gap-2" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
                     <div className="flex items-center gap-2 min-w-0">
                         {/* Mobile sidebar toggle */}
                         <button
@@ -837,17 +899,17 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                         >
                             <Menu className="w-4 h-4" />
                         </button>
-                        <div className="flex items-center gap-1.5 text-sm min-w-0" style={{ color: "#bcc9cd" }}>
+                        <div className="flex items-center gap-1.5 text-sm min-w-0" style={{ color: "hsl(var(--muted-foreground))" }}>
                             <span className="truncate max-w-[120px] hidden sm:block">{activeModule?.title}</span>
                             <ChevronRight className="w-3.5 h-3.5 shrink-0 hidden sm:block" />
-                            <span className="font-semibold truncate max-w-[180px] sm:max-w-xs" style={{ color: "#dee2f3" }}>{activeTopic?.title}</span>
+                            <span className="font-semibold truncate max-w-[180px] sm:max-w-xs" style={{ color: "hsl(var(--foreground))" }}>{activeTopic?.title}</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
                             onClick={() => setIsShortcutsOpen(true)}
                             className="hidden sm:flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
-                            style={{ border: "1px solid rgba(255,255,255,0.1)", color: "#bcc9cd" }}
+                            style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
                             title="Keyboard Shortcuts (?)"
                         >
                             <Keyboard className="w-3.5 h-3.5" />
@@ -857,8 +919,8 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             disabled={!activeTopic || activeTopic.isCompleted || isCompleting}
                             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
                             style={activeTopic?.isCompleted
-                                ? { background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#34d399" }
-                                : { background: "rgba(76,215,246,0.1)", border: "1px solid rgba(76,215,246,0.25)", color: "#4cd7f6" }
+                                ? { background: "hsl(var(--success) / 0.12)", border: "1px solid hsl(var(--success) / 0.25)", color: "hsl(var(--success))" }
+                                : { background: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.25)", color: "hsl(var(--primary))" }
                             }
                         >
                             {isCompleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -870,22 +932,22 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                 <div className="flex-1 overflow-auto p-6 md:p-8">
                     <div className="max-w-4xl mx-auto w-full">
                         {actionError ? (
-                            <div className="mb-4 text-sm rounded-xl px-4 py-3" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}>
+                            <div className="mb-4 text-sm rounded-xl px-4 py-3" style={{ background: "hsl(var(--destructive) / 0.08)", border: "1px solid hsl(var(--destructive) / 0.2)", color: "hsl(var(--destructive))" }}>
                                 {actionError}
                             </div>
                         ) : null}
 
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
                             <div>
-                                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight" style={{ color: "#dee2f3" }}>{activeTopic?.title}</h1>
+                                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight" style={{ color: "hsl(var(--foreground))" }}>{activeTopic?.title}</h1>
                                 <div className="mt-2 flex flex-wrap gap-2">
-                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={activeTopic?.videoProgress && activeTopic.videoProgress >= 90 ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6", border: "1px solid rgba(76,215,246,0.2)" }}>
+                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={activeTopic?.videoProgress && activeTopic.videoProgress >= 90 ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.25)" } : { background: "hsl(var(--primary) / 0.08)", color: "hsl(var(--primary))", border: "1px solid hsl(var(--primary) / 0.2)" }}>
                                         Video {activeTopic?.videoProgress || 0}%
                                     </span>
-                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={activeTopic?.notesCompleted ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(255,255,255,0.05)", color: "#bcc9cd", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={activeTopic?.notesCompleted ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.25)" } : { background: "hsl(var(--border) / 0.5)", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" }}>
                                         Notes {activeTopic?.notesCompleted ? "✓ done" : "pending"}
                                     </span>
-                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={activeTopic?.practiceCompleted ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(255,255,255,0.05)", color: "#bcc9cd", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={activeTopic?.practiceCompleted ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.25)" } : { background: "hsl(var(--border) / 0.5)", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" }}>
                                         Practice {activeTopic?.practiceCompleted ? "✓ done" : "pending"}
                                     </span>
                                 </div>
@@ -895,7 +957,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                     onClick={handlePreviousTopic}
                                     disabled={!canGoPrev}
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
-                                    style={{ border: "1px solid rgba(255,255,255,0.1)", color: "#bcc9cd" }}
+                                    style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
                                 >
                                     <ArrowLeft className="w-4 h-4" /> Prev
                                 </button>
@@ -903,14 +965,14 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                     onClick={handleNextTopic}
                                     disabled={!canGoNext}
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
-                                    style={{ border: "1px solid rgba(255,255,255,0.1)", color: "#bcc9cd" }}
+                                    style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
                                 >
                                     Next <ArrowRight className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
 
-                        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TopicTab)} className="w-full">
+                        <Tabs value={activeTab} onValueChange={(value) => selectTab(value as TopicTab)} className="w-full">
                             <TabsList className="grid w-full grid-cols-3 mb-8">
                                 <TabsTrigger value="watch"><PlayCircle className="w-4 h-4 mr-2" /> Watch</TabsTrigger>
                                 <TabsTrigger value="read"><FileText className="w-4 h-4 mr-2" /> Read Notes</TabsTrigger>
@@ -922,16 +984,16 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                     <>
                                         <div className="mb-4 flex flex-wrap gap-2 items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#bcc9cd" }}>Depth:</label>
-                                                <div className="flex rounded-xl overflow-hidden text-sm" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                                                <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "hsl(var(--muted-foreground))" }}>Depth:</label>
+                                                <div className="flex rounded-xl overflow-hidden text-sm" style={{ border: "1px solid hsl(var(--border))" }}>
                                                     {(["short", "medium", "full"] as VideoDepth[]).map((d) => (
                                                         <button
                                                             key={d}
                                                             onClick={() => { setVideoDepth(d); setManualVideoIndex(null); }}
                                                             className="px-3 py-1.5 text-xs font-semibold capitalize transition-all"
                                                             style={videoDepth === d
-                                                                ? { background: "rgba(76,215,246,0.15)", color: "#4cd7f6", borderLeft: "1px solid rgba(76,215,246,0.25)", borderRight: "1px solid rgba(76,215,246,0.25)" }
-                                                                : { color: "#bcc9cd" }
+                                                                ? { background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))", borderLeft: "1px solid hsl(var(--primary) / 0.25)", borderRight: "1px solid hsl(var(--primary) / 0.25)" }
+                                                                : { color: "hsl(var(--muted-foreground))" }
                                                             }
                                                         >{d}</button>
                                                     ))}
@@ -942,7 +1004,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                     onClick={() => setManualVideoIndex((prev) => (prev === null ? depthVideoIndex : Math.max(0, prev - 1)))}
                                                     disabled={!hasPrevVideo}
                                                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
-                                                    style={{ border: "1px solid rgba(255,255,255,0.1)", color: "#bcc9cd" }}
+                                                    style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
                                                 >
                                                     <ArrowLeft className="w-3.5 h-3.5" /> Prev Video
                                                 </button>
@@ -953,14 +1015,14 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                     })}
                                                     disabled={!hasNextVideo}
                                                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
-                                                    style={{ border: "1px solid rgba(255,255,255,0.1)", color: "#bcc9cd" }}
+                                                    style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
                                                 >
                                                     Next Video <ArrowRight className="w-3.5 h-3.5" />
                                                 </button>
                                             </div>
                                         </div>
 
-                                        <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl relative" style={{ background: "#000", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                        <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl relative" style={{ background: "hsl(var(--foreground))", border: "1px solid hsl(var(--border))" }}>
                                             <iframe
                                                 width="100%"
                                                 height="100%"
@@ -973,24 +1035,24 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                         </div>
                                         <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                             <div>
-                                                <h3 className="text-base font-semibold" style={{ color: "#dee2f3" }}>{primaryVideo?.title || activeTopic?.title}</h3>
-                                                <p className="text-sm mt-1" style={{ color: "#bcc9cd" }}>Authoritative source automatically curated for you.</p>
+                                                <h3 className="text-base font-semibold" style={{ color: "hsl(var(--foreground))" }}>{primaryVideo?.title || activeTopic?.title}</h3>
+                                                <p className="text-sm mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>Authoritative source automatically curated for you.</p>
                                             </div>
                                             <button
                                                 onClick={() => syncTopicProgress({ videoProgress: 100 })}
                                                 disabled={isSyncingProgress || Boolean(activeTopic?.videoProgress && activeTopic.videoProgress >= 90)}
                                                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                                                style={{ border: "1px solid rgba(76,215,246,0.25)", color: "#4cd7f6", background: "rgba(76,215,246,0.06)" }}
+                                                style={{ border: "1px solid hsl(var(--primary) / 0.25)", color: "hsl(var(--primary))", background: "hsl(var(--primary) / 0.06)" }}
                                             >
                                                 {isSyncingProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                                                 {activeTopic?.videoProgress && activeTopic.videoProgress >= 90 ? "Marked Understood" : "Mark as Understood"}
                                             </button>
                                         </div>
 
-                                        <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(22,27,40,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                        <div className="mt-6 rounded-2xl p-5" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
                                             <div className="flex items-center justify-between mb-3">
-                                                <h4 className="font-semibold" style={{ color: "#dee2f3" }}>Notes + Video Combined View</h4>
-                                                <button onClick={() => setActiveTab("read")} className="text-xs font-semibold px-3 py-1 rounded-lg transition-all" style={{ color: "#4cd7f6" }}>
+                                                <h4 className="font-semibold" style={{ color: "hsl(var(--foreground))" }}>Notes + Video Combined View</h4>
+                                                <button onClick={() => selectTab("read")} className="text-xs font-semibold px-3 py-1 rounded-lg transition-all" style={{ color: "hsl(var(--primary))" }}>
                                                     Open Full Notes
                                                 </button>
                                             </div>
@@ -1001,9 +1063,9 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                     </ReactMarkdown>
                                                 </div>
                                             ) : (
-                                                <div className="text-sm flex items-center gap-3" style={{ color: "#bcc9cd" }}>
+                                                <div className="text-sm flex items-center gap-3" style={{ color: "hsl(var(--muted-foreground))" }}>
                                                     Notes are not available yet.
-                                                    <button onClick={handleGenerateNotes} disabled={isGeneratingNotes} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" style={{ background: "rgba(76,215,246,0.1)", border: "1px solid rgba(76,215,246,0.2)", color: "#4cd7f6" }}>
+                                                    <button onClick={handleGenerateNotes} disabled={isGeneratingNotes} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all" style={{ background: "hsl(var(--primary) / 0.1)", border: "1px solid hsl(var(--primary) / 0.2)", color: "hsl(var(--primary))" }}>
                                                         {isGeneratingNotes ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                                                         Generate Notes
                                                     </button>
@@ -1012,14 +1074,14 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="rounded-2xl p-12 text-center flex flex-col items-center justify-center" style={{ background: "rgba(22,27,40,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                                        <PlayCircle className="w-12 h-12 mb-4 opacity-30" style={{ color: "#4cd7f6" }} />
-                                        <h3 className="text-xl font-semibold mb-2" style={{ color: "#dee2f3" }}>No Video Loaded</h3>
-                                        <p className="mb-6 max-w-xs" style={{ color: "#bcc9cd" }}>Videos are fetched on-demand to save quota. Load one now.</p>
+                                    <div className="rounded-2xl p-12 text-center flex flex-col items-center justify-center" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                                        <PlayCircle className="w-12 h-12 mb-4 opacity-30" style={{ color: "hsl(var(--primary))" }} />
+                                        <h3 className="text-xl font-semibold mb-2" style={{ color: "hsl(var(--foreground))" }}>No Video Loaded</h3>
+                                        <p className="mb-6 max-w-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Videos are fetched on-demand to save quota. Load one now.</p>
                                         {videosError ? (
-                                            <p className="text-sm mb-3" style={{ color: "#f87171" }}>{videosError}</p>
+                                            <p className="text-sm mb-3" style={{ color: "hsl(var(--destructive))" }}>{videosError}</p>
                                         ) : null}
-                                        <button onClick={handleFetchVideos} disabled={isFetchingVideos} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50" style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)", color: "#003640" }}>
+                                        <button onClick={handleFetchVideos} disabled={isFetchingVideos} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50" style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
                                             {isFetchingVideos ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
                                             {isFetchingVideos ? "Finding Videos..." : "Load Videos"}
                                         </button>
@@ -1030,7 +1092,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             <TabsContent value="read" className="mt-0 outline-none">
                                 {activeTopic?.notes ? (
                                     <div className="prose prose-invert max-w-none">
-                                        <div className="p-6 sm:p-10 rounded-2xl" style={{ background: "rgba(22,27,40,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                        <div className="p-6 sm:p-10 rounded-2xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {activeTopic.notes}
                                             </ReactMarkdown>
@@ -1039,7 +1101,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                     onClick={() => syncTopicProgress({ notesCompleted: true })}
                                                     disabled={isSyncingProgress || Boolean(activeTopic.notesCompleted)}
                                                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                                                    style={activeTopic.notesCompleted ? { background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#34d399" } : { border: "1px solid rgba(76,215,246,0.25)", color: "#4cd7f6", background: "rgba(76,215,246,0.06)" }}
+                                                    style={activeTopic.notesCompleted ? { background: "hsl(var(--success) / 0.12)", border: "1px solid hsl(var(--success) / 0.25)", color: "hsl(var(--success))" } : { border: "1px solid hsl(var(--primary) / 0.25)", color: "hsl(var(--primary))", background: "hsl(var(--primary) / 0.06)" }}
                                                 >
                                                     {isSyncingProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                                                     {activeTopic.notesCompleted ? "Notes Completed ✓" : "Mark Notes Done"}
@@ -1047,15 +1109,34 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                             </div>
                                         </div>
                                     </div>
+                                ) : isGeneratingNotes ? (
+                                    <div className="rounded-2xl p-6 sm:p-8" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} aria-busy="true" aria-live="polite">
+                                        <span className="sr-only">Generating notes for this topic</span>
+                                        <div className="skeleton h-7 w-2/5" />
+                                        <div className="mt-6 space-y-3">
+                                            {["w-full", "w-11/12", "w-10/12", "w-full", "w-9/12"].map((width, index) => (
+                                                <div key={index} className={`skeleton h-4 ${width}`} />
+                                            ))}
+                                        </div>
+                                        <div className="skeleton mt-8 h-6 w-1/3" />
+                                        <div className="mt-5 space-y-3">
+                                            {["w-full", "w-10/12", "w-11/12"].map((width, index) => (
+                                                <div key={index} className={`skeleton h-4 ${width}`} />
+                                            ))}
+                                        </div>
+                                        <p className="mt-8 text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>
+                                            Writing notes from trusted sources. This usually takes 20-40 seconds.
+                                        </p>
+                                    </div>
                                 ) : (
-                                    <div className="rounded-2xl p-12 text-center flex flex-col items-center justify-center" style={{ background: "rgba(22,27,40,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                                        <FileText className="w-12 h-12 mb-4 opacity-30" style={{ color: "#4cd7f6" }} />
-                                        <h3 className="text-xl font-semibold mb-2" style={{ color: "#dee2f3" }}>No Notes Available</h3>
-                                        <p className="mb-6 max-w-xs" style={{ color: "#bcc9cd" }}>Generate AI notes for this topic to study without leaving the page.</p>
+                                    <div className="rounded-2xl p-12 text-center flex flex-col items-center justify-center" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
+                                        <FileText className="w-12 h-12 mb-4 opacity-30" style={{ color: "hsl(var(--primary))" }} />
+                                        <h3 className="text-xl font-semibold mb-2" style={{ color: "hsl(var(--foreground))" }}>No Notes Available</h3>
+                                        <p className="mb-6 max-w-xs" style={{ color: "hsl(var(--muted-foreground))" }}>Generate AI notes for this topic to study without leaving the page.</p>
                                         {notesError ? (
-                                            <p className="text-sm mb-3" style={{ color: "#f87171" }}>{notesError}</p>
+                                            <p className="text-sm mb-3" style={{ color: "hsl(var(--destructive))" }}>{notesError}</p>
                                         ) : null}
-                                        <button onClick={handleGenerateNotes} disabled={isGeneratingNotes} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50" style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)", color: "#003640" }}>
+                                        <button onClick={handleGenerateNotes} disabled={isGeneratingNotes} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50" style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
                                             {isGeneratingNotes ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                                             {isGeneratingNotes ? "Generating..." : "Generate Notes"}
                                         </button>
@@ -1064,26 +1145,26 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             </TabsContent>
 
                             <TabsContent value="practice" className="mt-0 outline-none">
-                                <div className="p-6 sm:p-8 rounded-2xl" style={{ background: "rgba(22,27,40,0.85)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                <div className="p-6 sm:p-8 rounded-2xl" style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}>
                                     <div className="flex flex-col gap-4 mb-6">
                                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                             <div>
-                                                <h3 className="text-xl font-semibold mb-1" style={{ color: "#dee2f3" }}>Practice Mode</h3>
-                                                <p className="text-sm" style={{ color: "#bcc9cd" }}>Timed mock with instant feedback and adaptive difficulty.</p>
+                                                <h3 className="text-xl font-semibold mb-1" style={{ color: "hsl(var(--foreground))" }}>Practice Mode</h3>
+                                                <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Timed mock with instant feedback and adaptive difficulty.</p>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <label className="text-sm" style={{ color: "#bcc9cd" }}>Difficulty</label>
+                                                <label className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Difficulty</label>
                                                 <select
                                                     value={practiceDifficulty}
                                                     onChange={(event) => setPracticeDifficulty(event.target.value as PracticeDifficulty)}
                                                     className="h-9 rounded-xl px-3 text-sm outline-none"
-                                                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#dee2f3" }}
+                                                    style={{ background: "hsl(var(--border) / 0.5)", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}
                                                 >
                                                     <option value="easy">Easy</option>
                                                     <option value="medium">Medium</option>
                                                     <option value="hard">Hard</option>
                                                 </select>
-                                                <button onClick={handleGeneratePractice} disabled={!activeTopic || isGeneratingPractice} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50" style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)", color: "#003640" }}>
+                                                <button onClick={handleGeneratePractice} disabled={!activeTopic || isGeneratingPractice} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50" style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
                                                     {isGeneratingPractice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
                                                     {activePracticeQuestions.length > 0 ? "Regenerate Set" : "Generate Set"}
                                                 </button>
@@ -1094,14 +1175,14 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                 <button
                                                     onClick={handleStartMock}
                                                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-                                                    style={isMockStarted ? { background: "rgba(76,215,246,0.12)", border: "1px solid rgba(76,215,246,0.25)", color: "#4cd7f6" } : { border: "1px solid rgba(255,255,255,0.1)", color: "#bcc9cd" }}
+                                                    style={isMockStarted ? { background: "hsl(var(--primary) / 0.12)", border: "1px solid hsl(var(--primary) / 0.25)", color: "hsl(var(--primary))" } : { border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
                                                 >
                                                     <Timer className="w-4 h-4" />
                                                     {isMockStarted ? "Running" : "Start Timed Mock"}
                                                 </button>
-                                                <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.05)", color: "#bcc9cd", border: "1px solid rgba(255,255,255,0.08)" }}>Timer: {formatTimer(mockSecondsLeft)}</span>
+                                                <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "hsl(var(--border) / 0.5)", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" }}>Timer: {formatTimer(mockSecondsLeft)}</span>
                                                 {isMockSubmitted ? (
-                                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={mockPercent >= 70 ? { background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.25)" } : { background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}>
+                                                    <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={mockPercent >= 70 ? { background: "hsl(var(--success) / 0.12)", color: "hsl(var(--success))", border: "1px solid hsl(var(--success) / 0.25)" } : { background: "hsl(var(--destructive) / 0.1)", color: "hsl(var(--destructive))", border: "1px solid hsl(var(--destructive) / 0.25)" }}>
                                                         Score: {mockScore}/{activePracticeQuestions.length} ({mockPercent}%)
                                                     </span>
                                                 ) : null}
@@ -1110,28 +1191,30 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                     </div>
 
                                     {practiceError ? (
-                                        <p className="text-sm mb-4" style={{ color: "#f87171" }}>{practiceError}</p>
+                                        <p className="text-sm mb-4" style={{ color: "hsl(var(--destructive))" }}>{practiceError}</p>
                                     ) : null}
 
                                     {activePracticeQuestions.length === 0 ? (
-                                        <div className="text-center py-10 rounded-xl" style={{ border: "1px dashed rgba(255,255,255,0.1)" }}>
-                                            <CheckSquare className="w-10 h-10 mx-auto mb-3" style={{ color: "#4cd7f6", opacity: 0.4 }} />
-                                            <p style={{ color: "#bcc9cd" }}>No practice set generated yet.</p>
+                                        <div className="text-center py-10 rounded-xl" style={{ border: "1px dashed hsl(var(--border))" }}>
+                                            <CheckSquare className="w-10 h-10 mx-auto mb-3" style={{ color: "hsl(var(--primary))", opacity: 0.4 }} />
+                                            <p style={{ color: "hsl(var(--muted-foreground))" }}>No practice set generated yet.</p>
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
                                             {activePracticeQuestions.map((question, index) => {
                                                 const selectedAnswer = mockAnswers[index];
                                                 const isCorrect = selectedAnswer === question.answer;
+                                                // Outside a timed mock, answering reveals the result straight away.
+                                                const isRevealed = isMockSubmitted || (!isMockStarted && selectedAnswer !== undefined);
                                                 return (
-                                                    <div key={`${question.question}-${index}`} className="rounded-xl p-4" style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-                                                        <p className="font-medium mb-3" style={{ color: "#dee2f3" }}>{index + 1}. {question.question}</p>
+                                                    <div key={`${question.question}-${index}`} className="rounded-xl p-4" style={{ border: "1px solid hsl(var(--border))", background: "hsl(var(--border) / 0.5)" }}>
+                                                        <p className="font-medium mb-3" style={{ color: "hsl(var(--foreground))" }}>{index + 1}. {question.question}</p>
                                                         <div className="space-y-2 text-sm">
                                                             {question.options.map((option, optionIndex) => {
                                                                 const optionLabel = `${String.fromCharCode(65 + optionIndex)}. ${option}`;
                                                                 const isSelected = selectedAnswer === option;
-                                                                const showCorrect = isMockSubmitted && option === question.answer;
-                                                                const showWrongSelection = isMockSubmitted && isSelected && option !== question.answer;
+                                                                const showCorrect = isRevealed && option === question.answer;
+                                                                const showWrongSelection = isRevealed && isSelected && option !== question.answer;
                                                                 return (
                                                                     <button
                                                                         key={`${option}-${optionIndex}`}
@@ -1141,11 +1224,12 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                                             }
                                                                         }}
                                                                         disabled={isMockSubmitted}
+                                                                        aria-pressed={isSelected}
                                                                         className="w-full text-left rounded-xl px-3 py-2.5 transition-all text-sm"
                                                                         style={{
-                                                                            border: showCorrect ? "1px solid rgba(16,185,129,0.5)" : showWrongSelection ? "1px solid rgba(239,68,68,0.5)" : isSelected && !isMockSubmitted ? "1px solid rgba(76,215,246,0.35)" : "1px solid rgba(255,255,255,0.07)",
-                                                                            background: showCorrect ? "rgba(16,185,129,0.08)" : showWrongSelection ? "rgba(239,68,68,0.08)" : isSelected && !isMockSubmitted ? "rgba(76,215,246,0.08)" : "transparent",
-                                                                            color: "#bcc9cd",
+                                                                            border: showCorrect ? "1px solid hsl(var(--success) / 0.5)" : showWrongSelection ? "1px solid hsl(var(--destructive) / 0.5)" : isSelected && !isRevealed ? "1px solid hsl(var(--primary) / 0.35)" : "1px solid hsl(var(--border))",
+                                                                            background: showCorrect ? "hsl(var(--success) / 0.08)" : showWrongSelection ? "hsl(var(--destructive) / 0.08)" : isSelected && !isRevealed ? "hsl(var(--primary) / 0.08)" : "transparent",
+                                                                            color: "hsl(var(--muted-foreground))",
                                                                         }}
                                                                     >
                                                                         {optionLabel}
@@ -1153,12 +1237,12 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                                 );
                                                             })}
                                                         </div>
-                                                        {isMockSubmitted ? (
-                                                            <div className="mt-3 text-sm">
-                                                                <p style={{ color: isCorrect ? "#34d399" : "#ffba45" }}>
+                                                        {isRevealed ? (
+                                                            <div className="mt-3 text-sm" aria-live="polite">
+                                                                <p style={{ color: isCorrect ? "hsl(var(--success))" : "hsl(var(--warning))" }}>
                                                                     {isCorrect ? "Correct ✓" : `Incorrect. Correct: ${question.answer}`}
                                                                 </p>
-                                                                {!isCorrect ? <p className="mt-1" style={{ color: "#bcc9cd" }}>{question.explanation}</p> : null}
+                                                                {!isCorrect ? <p className="mt-1" style={{ color: "hsl(var(--muted-foreground))" }}>{question.explanation}</p> : null}
                                                             </div>
                                                         ) : null}
                                                     </div>
@@ -1169,7 +1253,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
                                     {activePracticeQuestions.length > 0 && !isMockSubmitted ? (
                                         <div className="mt-6 text-center">
-                                            <button onClick={handleSubmitMock} className="px-6 py-2.5 rounded-xl font-semibold text-sm transition-all" style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)", color: "#003640" }}>
+                                            <button onClick={handleSubmitMock} className="px-6 py-2.5 rounded-xl font-semibold text-sm transition-all" style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}>
                                                 Submit Mock Test
                                             </button>
                                         </div>
@@ -1180,7 +1264,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                             onClick={() => syncTopicProgress({ practiceCompleted: true })}
                                             disabled={isSyncingProgress || Boolean(activeTopic?.practiceCompleted)}
                                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                                            style={activeTopic?.practiceCompleted ? { background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#34d399" } : { border: "1px solid rgba(76,215,246,0.25)", color: "#4cd7f6", background: "rgba(76,215,246,0.06)" }}
+                                            style={activeTopic?.practiceCompleted ? { background: "hsl(var(--success) / 0.12)", border: "1px solid hsl(var(--success) / 0.25)", color: "hsl(var(--success))" } : { border: "1px solid hsl(var(--primary) / 0.25)", color: "hsl(var(--primary))", background: "hsl(var(--primary) / 0.06)" }}
                                         >
                                             {isSyncingProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}
                                             {activeTopic?.practiceCompleted ? "Practice Completed ✓" : "Mark Practice Done"}
@@ -1189,7 +1273,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                             onClick={handleMarkComplete}
                                             disabled={!activeTopic || activeTopic.isCompleted || isCompleting}
                                             className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50"
-                                            style={{ background: "linear-gradient(135deg,#acedff,#4cd7f6)", color: "#003640" }}
+                                            style={{ background: "hsl(var(--primary))", color: "hsl(var(--primary-foreground))" }}
                                         >
                                             {activeTopic?.isCompleted ? "Already Completed ✓" : "Complete This Topic"}
                                         </button>
@@ -1210,20 +1294,20 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                         exit={{ opacity: 0, y: 24, scale: 0.96 }}
                         transition={{ type: "spring", damping: 24, stiffness: 280 }}
                         className="fixed inset-x-4 bottom-4 z-50 flex flex-col overflow-hidden rounded-[1.6rem] shadow-2xl shadow-black/60 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[420px]"
-                        style={{ background: "linear-gradient(180deg,rgba(14,19,31,0.98) 0%, rgba(12,17,28,0.96) 100%)", border: "1px solid rgba(76,215,246,0.2)", backdropFilter: "blur(24px)", maxHeight: "calc(100vh - 120px)" }}
+                        style={{ background: "linear-gradient(180deg,hsl(var(--card)) 0%, hsl(var(--card)) 100%)", border: "1px solid hsl(var(--primary) / 0.2)", backdropFilter: "blur(24px)", maxHeight: "calc(100vh - 120px)" }}
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-4 py-3.5 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "linear-gradient(180deg,rgba(76,215,246,0.08) 0%, rgba(76,215,246,0.02) 100%)" }}>
+                        <div className="flex items-center justify-between px-4 py-3.5 shrink-0" style={{ borderBottom: "1px solid hsl(var(--border))", background: "linear-gradient(180deg,hsl(var(--primary) / 0.08) 0%, hsl(var(--primary) / 0.02) 100%)" }}>
                             <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg,#4cd7f6,#38bdf8)" }}>
-                                    <Brain className="w-4 h-4 text-[#003640]" />
+                                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "hsl(var(--primary))" }}>
+                                    <Brain className="w-4 h-4 text-[hsl(var(--primary-foreground))]" />
                                 </div>
                                 <div className="min-w-0">
                                     <p className="text-sm font-bold leading-none">AI Tutor</p>
-                                    <p className="text-[11px] text-[#bcc9cd] mt-0.5 truncate max-w-[240px]">{activeTopic?.title}</p>
+                                    <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5 truncate max-w-[240px]">{activeTopic?.title}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsChatOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#bcc9cd] hover:bg-white/10 transition-colors shrink-0">
+                            <button onClick={() => setIsChatOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:bg-white/10 transition-colors shrink-0">
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
@@ -1231,7 +1315,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                         {/* Suggested prompts (show only when no messages) */}
                         {chatMessages.length === 0 && !isChatLoading && (
                             <div className="px-4 pt-4 pb-2 shrink-0">
-                                <p className="text-[10px] text-[#bcc9cd] uppercase tracking-widest font-semibold mb-2.5">Quick questions</p>
+                                <p className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-widest font-semibold mb-2.5">Quick questions</p>
                                 <div className="flex flex-wrap gap-2">
                                     {[
                                         "Explain this topic simply",
@@ -1244,7 +1328,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                             onClick={() => handleAskAI(prompt)}
                                             disabled={isChatLoading}
                                             className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-all hover:scale-105"
-                                            style={{ background: "rgba(76,215,246,0.08)", border: "1px solid rgba(76,215,246,0.18)", color: "#9ae9ff" }}
+                                            style={{ background: "hsl(var(--primary) / 0.08)", border: "1px solid hsl(var(--primary) / 0.18)", color: "hsl(var(--primary))" }}
                                         >
                                             {prompt}
                                         </button>
@@ -1254,12 +1338,18 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                         )}
 
                         {/* Messages */}
-                        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ minHeight: 140, background: "linear-gradient(180deg,rgba(255,255,255,0.015) 0%, rgba(255,255,255,0) 100%)" }}>
+                        <div
+                            className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
+                            role="log"
+                            aria-live="polite"
+                            aria-label={`AI tutor conversation about ${activeTopic?.title ?? "this topic"}`}
+                            style={{ minHeight: 140, background: "hsl(var(--muted) / 0.5)" }}
+                        >
                             {chatMessages.length === 0 && !isChatLoading && (
                                 <div className="text-center py-8">
-                                    <MessageCircle className="w-9 h-9 mx-auto mb-2" style={{ color: "rgba(76,215,246,0.25)" }} />
-                                    <p className="text-sm text-[#bcc9cd]">Ask anything about this topic.</p>
-                                    <p className="text-xs text-[#869397] mt-1">AI answers using notes + trusted sources.</p>
+                                    <MessageCircle className="w-9 h-9 mx-auto mb-2" style={{ color: "hsl(var(--primary) / 0.25)" }} />
+                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Ask anything about this topic.</p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">AI answers using notes + trusted sources.</p>
                                 </div>
                             )}
 
@@ -1270,8 +1360,8 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                 >
                                     {/* Avatar */}
                                     {msg.role === "ai" && (
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ background: "linear-gradient(135deg,#4cd7f6,#38bdf8)" }}>
-                                            <Brain className="w-3 h-3 text-[#003640]" />
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ background: "hsl(var(--primary))" }}>
+                                            <Brain className="w-3 h-3 text-[hsl(var(--primary-foreground))]" />
                                         </div>
                                     )}
                                     <div
@@ -1284,7 +1374,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                                             </div>
                                         ) : (
-                                            <span className="text-[#dee2f3] font-medium">{msg.content}</span>
+                                            <span className="text-[hsl(var(--foreground))] font-medium">{msg.content}</span>
                                         )}
                                     </div>
                                 </div>
@@ -1293,8 +1383,8 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             {/* Typing indicator */}
                             {isChatLoading && (
                                 <div className="flex gap-2.5">
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg,#4cd7f6,#38bdf8)" }}>
-                                        <Brain className="w-3 h-3 text-[#003640]" />
+                                    <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: "hsl(var(--primary))" }}>
+                                        <Brain className="w-3 h-3 text-[hsl(var(--primary-foreground))]" />
                                     </div>
                                     <div className="chat-bubble-ai px-4 py-3 flex items-center gap-1">
                                         <span className="typing-dot" />
@@ -1308,7 +1398,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                         </div>
 
                         {/* Input */}
-                        <div className="flex gap-2 p-3 shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+                        <div className="flex gap-2 p-3 shrink-0" style={{ borderTop: "1px solid hsl(var(--border))", background: "hsl(var(--border) / 0.5)" }}>
                             <input
                                 ref={chatInputRef}
                                 value={chatQuestion}
@@ -1317,15 +1407,15 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                 placeholder="Ask about this topic…"
                                 disabled={isChatLoading}
                                 className="flex-1 text-sm px-3.5 py-2.5 rounded-xl outline-none disabled:opacity-50"
-                                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)", color: "#dee2f3" }}
+                                style={{ background: "hsl(var(--border) / 0.5)", border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))" }}
                             />
                             <button
                                 onClick={() => handleAskAI()}
                                 disabled={!chatQuestion.trim() || isChatLoading}
                                 className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105"
-                                style={{ background: "linear-gradient(135deg,#4cd7f6,#38bdf8)" }}
+                                style={{ background: "hsl(var(--primary))" }}
                             >
-                                <Send className="w-4 h-4 text-[#003640]" />
+                                <Send className="w-4 h-4 text-[hsl(var(--primary-foreground))]" />
                             </button>
                         </div>
                     </motion.div>
@@ -1339,17 +1429,17 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                     animate={{ scale: 1 }}
                     onClick={() => setIsChatOpen(true)}
                     className="fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-2xl shadow-glow-cyan"
-                    style={{ background: "linear-gradient(135deg,#4cd7f6,#38bdf8)" }}
+                    style={{ background: "hsl(var(--primary))" }}
                     title="Ask AI about this topic"
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.95 }}
                 >
                     <span className="flex h-14 w-14 items-center justify-center">
-                        <MessageCircle className="w-6 h-6 text-[#003640]" />
+                        <MessageCircle className="w-6 h-6 text-[hsl(var(--primary-foreground))]" />
                     </span>
-                    <span className="hidden pr-5 text-sm font-bold text-[#003640] sm:block">Ask AI Tutor</span>
+                    <span className="hidden pr-5 text-sm font-bold text-[hsl(var(--primary-foreground))] sm:block">Ask AI Tutor</span>
                     {chatMessages.length > 0 && (
-                        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-[#003640]" style={{ background: "#ffba45" }}>
+                        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-[hsl(var(--primary-foreground))]" style={{ background: "hsl(var(--warning))" }}>
                             {chatMessages.filter(m => m.role === "ai").length}
                         </span>
                     )}
@@ -1374,7 +1464,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             className="rounded-2xl border border-white/10 bg-background/95 backdrop-blur-xl p-6 w-full max-w-sm shadow-2xl"
                         >
                             <div className="flex items-center justify-between mb-4">
-                                <h3 className="font-bold text-lg flex items-center gap-2"><Keyboard className="w-5 h-5 text-cyan-400" /> Keyboard Shortcuts</h3>
+                                <h3 className="font-bold text-lg flex items-center gap-2"><Keyboard className="w-5 h-5 text-primary" /> Keyboard Shortcuts</h3>
                                 <button onClick={() => setIsShortcutsOpen(false)} className="w-7 h-7 rounded-lg hover:bg-white/10 flex items-center justify-center"><X className="w-4 h-4" /></button>
                             </div>
                             <div className="space-y-2">
@@ -1397,3 +1487,4 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         </div>
     );
 }
+

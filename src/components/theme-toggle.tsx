@@ -1,37 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Moon, Sun } from "lucide-react";
 
-export default function ThemeToggle() {
-    const { theme, setTheme, resolvedTheme } = useTheme();
-    const [mounted, setMounted] = useState(false);
+export function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+  // The server can't know the stored theme, so render the icon only after mount.
+  useEffect(() => setMounted(true), []);
 
-    const activeTheme = theme === "system" ? resolvedTheme : theme;
+  const isDark = resolvedTheme === "dark";
 
-    return (
-        <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="rounded-full border-cyan-500/30 hover:bg-cyan-500/10"
-            onClick={() => setTheme(activeTheme === "dark" ? "light" : "dark")}
-            aria-label="Toggle theme"
-        >
-            {!mounted ? (
-                <Sun className="h-4 w-4" />
-            ) : activeTheme === "dark" ? (
-                <Sun className="h-4 w-4" />
-            ) : (
-                <Moon className="h-4 w-4" />
-            )}
-        </Button>
-    );
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+    >
+      {mounted ? (
+        isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
+      ) : (
+        <span className="h-4 w-4" />
+      )}
+    </Button>
+  );
 }
-

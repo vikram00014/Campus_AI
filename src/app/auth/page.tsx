@@ -1,248 +1,264 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
-import {
-  GraduationCap, Loader2, Sparkles, BookOpenCheck,
-  BrainCircuit, ShieldCheck, Eye, EyeOff, ArrowRight,
-} from "lucide-react";
-import { login, signup } from "@/app/actions/auth";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import Link from "next/link";
+import { ArrowRight, CheckCircle2, Eye, EyeOff, GraduationCap, LayoutDashboard, Loader2, LogOut, User } from "lucide-react";
+import { login, logout, signup } from "@/app/actions/auth";
+import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
-  return "An unexpected error occurred";
+  return "Something went wrong. Please try again.";
 }
-
-const features = [
-  { icon: BookOpenCheck,  title: "Course Structuring",    description: "Auto module/topic breakdown from your university syllabus in seconds." },
-  { icon: BrainCircuit,   title: "Adaptive Practice",     description: "Difficulty-aware MCQ generation with timed mock exam support." },
-  { icon: Sparkles,       title: "Smart Insights",        description: "Weak-topic detection and personalized daily study plans." },
-  { icon: ShieldCheck,    title: "Verified Certificates", description: "Completion certificates with unique verification IDs for placement." },
-];
 
 export default function AuthPage() {
   const router = useRouter();
-  const [loading,      setLoading      ] = useState(false);
-  const [errorMsg,     setErrorMsg     ] = useState("");
-  const [activeTab,    setActiveTab    ] = useState<"login" | "signup">("login");
-  const [showPassword, setShowPassword ] = useState(false);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [currentUser, setCurrentUser] = useState<{ email?: string; name?: string } | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
-  async function handleAuth(action: "login" | "signup", formData: FormData) {
+  useEffect(() => {
+    async function checkCurrentSession() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUser({
+            email: user.email,
+            name: (user.user_metadata?.full_name as string) || user.email?.split("@")[0] || "Student",
+          });
+        }
+      } catch (err) {
+        console.error("Session check error:", err);
+      } finally {
+        setCheckingAuth(false);
+      }
+    }
+    checkCurrentSession();
+  }, []);
+
+  async function handleAuth(formData: FormData) {
     setLoading(true);
     setErrorMsg("");
+    setSuccessMsg("");
     try {
-      const result = action === "login" ? await login(formData) : await signup(formData);
-      if (result?.error) { setErrorMsg(result.error); setLoading(false); }
-      else { router.push("/dashboard"); router.refresh(); }
-    } catch (e: unknown) { setErrorMsg(getErrorMessage(e)); setLoading(false); }
+      if (mode === "signup" && name.trim()) {
+        formData.set("name", name.trim());
+      }
+      const result = mode === "login" ? await login(formData) : await signup(formData);
+      
+      if (result?.error) {
+        setErrorMsg(result.error);
+        setLoading(false);
+        return;
+      }
+
+      if (result?.needsConfirmation) {
+        setSuccessMsg(result.message || "Account created! Please check your email to confirm your account.");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (error) {
+      setErrorMsg(getErrorMessage(error));
+      setLoading(false);
+    }
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-64px)] flex items-center justify-center overflow-hidden px-4 py-12">
-      {/* Background orbs */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="orb orb-cyan    w-[600px] h-[500px] -top-24 -left-32" />
-        <div className="orb orb-amber   w-[400px] h-[400px] bottom-0  right-0 opacity-60" />
-        <div className="orb orb-purple  w-[300px] h-[300px] top-1/2  left-1/2 opacity-40" />
-        <div className="absolute inset-0 dot-bg opacity-50" />
-      </div>
+    <main className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-background px-4 py-12">
+      <section className="w-full max-w-[420px]">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
+            <GraduationCap className="h-6 w-6 text-primary" />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight">CAMPUS AI</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {currentUser
+              ? "You are currently signed in."
+              : "Sign in to access your autonomous courses, notes, and study plans."}
+          </p>
+        </div>
 
-      <div className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.15fr_0.85fr] items-center">
-        {/* ── LEFT BRANDING PANEL ── */}
-        <motion.section
-          initial={{ opacity: 0, x: -24 }}
-          animate={{ opacity: 1, x: 0  }}
-          transition={{ duration: 0.5 }}
-          className="hidden lg:block rounded-3xl relative overflow-hidden"
-          style={{ border: "1px solid rgba(76,215,246,0.15)", minHeight: "560px" }}
-        >
-          {/* Background image */}
-          <Image
-            src="/bg-hero.png"
-            alt=""
-            fill
-            className="object-cover"
-            style={{ opacity: 0.42 }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-br from-[#090e1a]/72 via-[#0e131f]/68 to-[#0e131f]/44" />
-          <div className="absolute inset-0 dot-bg opacity-22" />
-
-          <div className="relative z-10 p-10 flex flex-col h-full">
-            {/* Logo */}
-            <div className="flex items-center gap-3 mb-10">
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: "rgba(76,215,246,0.12)", border: "1px solid rgba(76,215,246,0.3)" }}>
-                <GraduationCap className="w-6 h-6 text-[#4cd7f6]" />
+        {/* If already logged in, show active session panel with quick actions */}
+        {!checkingAuth && currentUser ? (
+          <div className="surface-card space-y-6 p-6">
+            <div className="flex items-center gap-4 rounded-xl border border-border bg-muted/40 p-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground">
+                {currentUser.name?.[0]?.toUpperCase() || "S"}
               </div>
-              <div>
-                <p className="text-xl font-extrabold">CAMPUS <span className="text-[#4cd7f6]">AI</span></p>
-                <p className="text-xs text-[#bcc9cd]">Autonomous course engine</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{currentUser.name}</p>
+                <p className="truncate text-xs text-muted-foreground">{currentUser.email}</p>
               </div>
             </div>
 
-            {/* Headline */}
-            <h1 className="text-4xl xl:text-5xl font-extrabold leading-[1.1] tracking-tight mb-5">
-              Learn faster with
-              <span className="block gradient-text-hero mt-1">AI-structured courses,</span>
-              videos &amp; revision plans.
-            </h1>
-            <p className="text-[#bcc9cd] text-base leading-relaxed mb-10 max-w-md">
-              Build complete learning journeys from your syllabus, track weak topics,
-              and optimize for exams with adaptive AI practice.
-            </p>
-
-            {/* Feature grid */}
-            <div className="grid grid-cols-2 gap-3 mt-auto">
-              {features.map((f) => (
-                <div
-                  key={f.title}
-                  className="rounded-2xl p-4 transition-colors"
-                  style={{ background: "rgba(26,31,44,0.7)", border: "1px solid rgba(255,255,255,0.07)" }}
+            <div className="space-y-3">
+              <Button asChild className="w-full" size="lg">
+                <Link href="/dashboard">
+                  <LayoutDashboard className="h-4 w-4" />
+                  Go to Dashboard
+                </Link>
+              </Button>
+              <form action={logout}>
+                <Button type="submit" variant="outline" className="w-full">
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </Button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div className="surface-card p-6">
+            <div className="mb-6 grid grid-cols-2 rounded-xl bg-muted p-1">
+              {(["login", "signup"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => {
+                    setMode(item);
+                    setErrorMsg("");
+                    setSuccessMsg("");
+                  }}
+                  className={cn(
+                    "rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors",
+                    mode === item && "bg-card text-foreground shadow-sm"
+                  )}
                 >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <f.icon className="w-4 h-4 text-[#4cd7f6]" />
-                    <span className="text-sm font-semibold">{f.title}</span>
-                  </div>
-                  <p className="text-xs text-[#bcc9cd] leading-relaxed">{f.description}</p>
-                </div>
+                  {item === "login" ? "Log in" : "Sign up"}
+                </button>
               ))}
             </div>
-          </div>
-        </motion.section>
 
-        {/* ── RIGHT FORM PANEL ── */}
-        <motion.div
-          initial={{ opacity: 0, x: 24 }}
-          animate={{ opacity: 1, x: 0  }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="w-full max-w-md mx-auto"
-        >
-          {/* Mobile logo */}
-          <div className="flex items-center justify-center gap-3 mb-8 lg:hidden">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(76,215,246,0.12)", border: "1px solid rgba(76,215,246,0.25)" }}>
-              <GraduationCap className="w-5 h-5 text-[#4cd7f6]" />
-            </div>
-            <span className="font-extrabold text-xl">CAMPUS <span className="text-[#4cd7f6]">AI</span></span>
-          </div>
-
-          <div className="mb-8 text-center">
-            <h2 className="text-2xl font-extrabold mb-1">Access Your Learning Workspace</h2>
-            <p className="text-sm text-[#bcc9cd]">Use your email and password to continue.</p>
-          </div>
-
-          {/* Tab switcher */}
-          <div className="flex rounded-2xl p-1 mb-6" style={{ background: "#161b28" }}>
-            {(["login", "signup"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => { setActiveTab(tab); setErrorMsg(""); }}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
-                style={
-                  activeTab === tab
-                    ? { background: "rgba(76,215,246,0.15)", color: "#4cd7f6", border: "1px solid rgba(76,215,246,0.25)" }
-                    : { color: "#bcc9cd" }
-                }
-              >
-                {tab === "login" ? "Log In" : "Sign Up"}
-              </button>
-            ))}
-          </div>
-
-          {/* Form card */}
-          <div className="rounded-3xl p-8 shadow-[0_22px_70px_rgba(0,0,0,0.22)]" style={{ background: "rgba(26,31,44,0.84)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}>
-            {activeTab === "login" ? (
-              <>
-                <h3 className="text-lg font-bold mb-1">Welcome back</h3>
-                <p className="text-sm text-[#bcc9cd] mb-6">Enter your credentials to continue your courses.</p>
-                <form action={(fd) => handleAuth("login", fd)} className="space-y-4">
-                  <InputField id="email-login" name="email" type="email" label="Email" placeholder="student@college.edu" />
-                  <PasswordField id="password-login" name="password" showPassword={showPassword} toggle={() => setShowPassword((v) => !v)} />
-                  {errorMsg && <ErrorMsg msg={errorMsg} />}
-                  <PrimaryButton loading={loading} label="Sign In" loadingLabel="Signing In..." />
-                </form>
-              </>
+            {successMsg ? (
+              <div className="space-y-4 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+                  <CheckCircle2 className="h-6 w-6" />
+                </div>
+                <h3 className="text-base font-semibold">Verification Sent</h3>
+                <p className="text-sm leading-6 text-muted-foreground">{successMsg}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setMode("login");
+                    setSuccessMsg("");
+                  }}
+                >
+                  Return to Log in
+                </Button>
+              </div>
             ) : (
-              <>
-                <h3 className="text-lg font-bold mb-1">Create your account</h3>
-                <p className="text-sm text-[#bcc9cd] mb-6">Start generating AI-powered courses in minutes.</p>
-                <form action={(fd) => handleAuth("signup", fd)} className="space-y-4">
-                  <InputField id="name-signup"  name="name"  type="text"  label="Full Name"  placeholder="Vikram Singh" />
-                  <InputField id="email-signup" name="email" type="email" label="Email"      placeholder="student@college.edu" />
-                  <PasswordField id="password-signup" name="password" showPassword={showPassword} toggle={() => setShowPassword((v) => !v)} />
-                  {errorMsg && <ErrorMsg msg={errorMsg} />}
-                  <PrimaryButton loading={loading} label="Create Free Account" loadingLabel="Creating Account..." isSignup />
-                </form>
-              </>
+              <form action={handleAuth} className="space-y-4">
+                {mode === "signup" && (
+                  <div className="space-y-2">
+                    <label htmlFor="name" className="text-sm font-semibold">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="name"
+                        name="name"
+                        type="text"
+                        required={mode === "signup"}
+                        autoComplete="name"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        placeholder="Vikram Kadam"
+                        className="input-field pl-10"
+                      />
+                      <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-semibold">
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="student@college.edu"
+                    className={cn("input-field", errorMsg && "border-destructive")}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-semibold">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      minLength={6}
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"}
+                      className={cn("input-field pr-12", errorMsg && "border-destructive")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {errorMsg && (
+                  <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+                    {errorMsg}
+                  </p>
+                )}
+
+                <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {mode === "login" ? "Signing in..." : "Creating account..."}
+                    </>
+                  ) : (
+                    <>
+                      {mode === "login" ? "Continue" : "Create account"}
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </form>
             )}
           </div>
+        )}
 
-          <p className="text-center text-xs text-[#869397] mt-5 leading-relaxed">
-            By continuing, you agree to our Terms of Service.<br />
-            Your data is protected by Supabase Row Level Security.
-          </p>
-        </motion.div>
-      </div>
-    </div>
+        <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
+          Your courses and progress are protected with Supabase authentication and row-level security.
+        </p>
+      </section>
+    </main>
   );
 }
 
-/* ── Sub-components ── */
-function InputField({ id, name, type = "text", label, placeholder }: { id: string; name: string; type?: string; label: string; placeholder?: string }) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-[#dee2f3]">{label}</label>
-      <input
-        id={id} name={name} type={type} required placeholder={placeholder}
-        className="w-full px-4 py-3 text-sm input-dark"
-      />
-    </div>
-  );
-}
-
-function PasswordField({ id, name, showPassword, toggle }: { id: string; name: string; showPassword: boolean; toggle: () => void }) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-[#dee2f3]">Password</label>
-      <div className="relative">
-        <input
-          id={id} name={name} type={showPassword ? "text" : "password"} required
-        autoComplete={id.includes("login") ? "current-password" : "new-password"}
-        className="w-full px-4 py-3 pr-11 text-sm input-dark"
-        />
-        <button
-          type="button"
-          onClick={toggle}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#bcc9cd] hover:text-[#dee2f3] transition-colors"
-        >
-          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ErrorMsg({ msg }: { msg: string }) {
-  return (
-    <p className="text-sm text-red-400 font-medium px-4 py-3 rounded-xl" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
-      {msg}
-    </p>
-  );
-}
-
-function PrimaryButton({ loading, label, loadingLabel, isSignup }: { loading: boolean; label: string; loadingLabel: string; isSignup?: boolean }) {
-  return (
-    <button
-      type="submit"
-      disabled={loading}
-      className="btn-primary w-full py-3.5 flex items-center justify-center gap-2 text-sm mt-2 disabled:opacity-60"
-    >
-      {loading
-        ? <><Loader2 className="w-4 h-4 animate-spin" />{loadingLabel}</>
-        : isSignup
-          ? <><Sparkles className="w-4 h-4" />{label}</>
-          : <><ArrowRight className="w-4 h-4" />{label}</>
-      }
-    </button>
-  );
-}

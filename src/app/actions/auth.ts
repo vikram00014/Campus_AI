@@ -3,15 +3,23 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
-export async function login(formData: FormData) {
+export type AuthResult = {
+    success?: boolean;
+    error?: string;
+    needsConfirmation?: boolean;
+    message?: string;
+};
+
+export async function login(formData: FormData): Promise<AuthResult> {
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+
+    if (!email || !password) {
+        return { error: "Please enter both email and password." };
+    }
+
     const supabase = await createClient();
-
-    const data = {
-        email: formData.get("email") as string,
-        password: formData.get("password") as string,
-    };
-
-    const { error } = await supabase.auth.signInWithPassword(data);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
         return { error: error.message };
@@ -20,26 +28,43 @@ export async function login(formData: FormData) {
     return { success: true };
 }
 
-export async function signup(formData: FormData) {
-    const supabase = await createClient();
+export async function signup(formData: FormData): Promise<AuthResult> {
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+    const name = String(formData.get("name") || "").trim() || email.split("@")[0] || "Student";
 
-    const data = {
-        email: formData.get("email") as string,
-        password: formData.get("password") as string,
+    if (!email || !password) {
+        return { error: "Please enter both email and password." };
+    }
+
+    if (password.length < 6) {
+        return { error: "Password must be at least 6 characters." };
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
         options: {
             data: {
-                full_name: formData.get("name") as string,
-            }
-        }
-    };
-
-    const { error } = await supabase.auth.signUp(data);
+                full_name: name,
+            },
+        },
+    });
 
     if (error) {
         return { error: error.message };
     }
 
-    return { success: true };
+    if (data.user && !data.session) {
+        return {
+            success: true,
+            needsConfirmation: true,
+            message: "Account created! Please check your email to confirm your account, then sign in.",
+        };
+    }
+
+    return { success: true, needsConfirmation: false };
 }
 
 export async function logout() {
@@ -47,3 +72,4 @@ export async function logout() {
     await supabase.auth.signOut();
     redirect("/");
 }
+

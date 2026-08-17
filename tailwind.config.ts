@@ -11,9 +11,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["'Plus Jakarta Sans'", 'system-ui', 'sans-serif'],
+        sans: ['var(--font-geist-sans)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-geist-mono)', 'ui-monospace', 'monospace'],
-        jakarta: ["'Plus Jakarta Sans'", 'sans-serif'],
       },
       colors: {
         background: 'hsl(var(--background))',
@@ -46,35 +45,17 @@ const config: Config = {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))'
         },
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))'
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))'
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
-        chart: {
-          '1': 'hsl(var(--chart-1))',
-          '2': 'hsl(var(--chart-2))',
-          '3': 'hsl(var(--chart-3))',
-          '4': 'hsl(var(--chart-4))',
-          '5': 'hsl(var(--chart-5))'
-        },
-        // Custom campus palette — must match globals.css design tokens exactly
-        navy: {
-          900: '#090e1a',
-          800: '#0e131f',
-          700: '#161b28',
-          600: '#1a1f2c',
-          500: '#252a37',
-          400: '#303542',
-          300: '#343946',
-        },
-        campus: {
-          cyan:    '#4cd7f6',
-          'cyan-dim': '#acedff',
-          amber:   '#ffba45',
-          'amber-dim': '#ffddb8',
-          purple:  '#a855f7',
-          emerald: '#10b981',
-          surface: '#0e131f',
-        }
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -85,26 +66,10 @@ const config: Config = {
         '3xl': 'calc(var(--radius) + 16px)',
       },
       boxShadow: {
-        'glow-cyan': '0 0 20px rgba(6, 182, 212, 0.25), 0 0 60px rgba(6, 182, 212, 0.1)',
-        'glow-amber': '0 0 20px rgba(245, 158, 11, 0.25), 0 0 60px rgba(245, 158, 11, 0.1)',
-        'glow-sm': '0 0 12px rgba(6, 182, 212, 0.2)',
-        'inner-glow': 'inset 0 1px 0 0 rgba(255,255,255,0.1)',
-      },
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'hero-grid': "linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px)",
-        'campus-grad': 'linear-gradient(135deg, #22d3ee 0%, #38bdf8 40%, #f59e0b 100%)',
+        card: '0 1px 2px hsl(var(--foreground) / 0.06), 0 12px 32px hsl(var(--foreground) / 0.06)',
+        floating: '0 20px 60px hsl(var(--foreground) / 0.16)',
       },
       keyframes: {
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-12px)' },
-        },
-        'glow-pulse': {
-          '0%, 100%': { opacity: '0.4' },
-          '50%': { opacity: '0.8' },
-        },
         'fade-in-up': {
           from: { opacity: '0', transform: 'translateY(16px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
@@ -119,10 +84,8 @@ const config: Config = {
         },
       },
       animation: {
-        float: 'float 6s ease-in-out infinite',
-        'glow-pulse': 'glow-pulse 3s ease-in-out infinite',
         'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
-        shimmer: 'shimmer 2s linear infinite',
+        shimmer: 'shimmer 1.4s linear infinite',
         'slide-in-right': 'slide-in-right 0.4s ease-out forwards',
       }
     }
