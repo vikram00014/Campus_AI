@@ -26,16 +26,19 @@ const courseSyllabusResponseSchema = {
                                 estimatedMinutes: { type: "number" },
                             },
                             required: ["title", "description", "type", "estimatedMinutes"],
+                            additionalProperties: false,
                         },
                     },
                 },
                 required: ["title", "orderIndex", "topics"],
+                additionalProperties: false,
             },
         },
         totalEstimatedHours: { type: "number" },
         prerequisites: { type: "array", items: { type: "string" } },
     },
     required: ["modules", "totalEstimatedHours", "prerequisites"],
+    additionalProperties: false,
 };
 
 // Zod Schema representing the desired Structured Output

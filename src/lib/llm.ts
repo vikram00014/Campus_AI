@@ -1,8 +1,8 @@
 import "server-only";
 
 import { generateObject, generateText as generateAiText, jsonSchema } from "ai";
-import { google } from "@ai-sdk/google";
-import { groq } from "@ai-sdk/groq";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGroq } from "@ai-sdk/groq";
 
 export type LlmEffort = "low" | "medium" | "high";
 
@@ -24,21 +24,30 @@ function getErrorMessage(error: unknown): string {
 }
 
 export function isLlmConfigured(): boolean {
-    return Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY) || Boolean(process.env.GROQ_API_KEY);
+    const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+    return Boolean(geminiKey) || Boolean(groqKey);
 }
 
 function getAvailableModels() {
     const models = [];
-    if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-        models.push(google("gemini-3.7-flash"));
-        models.push(google("gemini-3.6-flash"));
-        models.push(google("gemini-flash-latest"));
+    const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+
+    if (geminiKey) {
+        const googleClient = createGoogleGenerativeAI({ apiKey: geminiKey });
+        models.push(googleClient("gemini-flash-latest"));
+        models.push(googleClient("gemini-3.6-flash"));
+        models.push(googleClient("gemini-3.5-flash"));
     }
-    if (process.env.GROQ_API_KEY) {
-        models.push(groq("qwen/qwen3.6-27b"));
+    if (groqKey) {
+        const groqClient = createGroq({ apiKey: groqKey });
+        models.push(groqClient("openai/gpt-oss-120b"));
+        models.push(groqClient("openai/gpt-oss-20b"));
     }
     if (models.length === 0) {
-        models.push(google("gemini-3.7-flash"));
+        const defaultGoogle = createGoogleGenerativeAI({ apiKey: geminiKey || "" });
+        models.push(defaultGoogle("gemini-flash-latest"));
     }
     return models;
 }
