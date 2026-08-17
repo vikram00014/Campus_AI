@@ -2,7 +2,7 @@
 
 **Turn messy university syllabi into structured, actionable study paths.**
 
-🔗 **Live Demo**: [https://campus-ai-woad.vercel.app](https://campus-ai-woad.vercel.app)
+🌐 **Live App**: [https://campus-ai-woad.vercel.app](https://campus-ai-woad.vercel.app)
 
 CAMPUS AI is an autonomous course generator built for college students. Instead of spending hours searching YouTube, digging through textbook chapters, and scrambling before exams, students upload their syllabus PDF and get a complete, structured learning workspace in under 60 seconds.
 
