@@ -32,7 +32,9 @@ function getGroqClient() {
 
 /**
  * Models for structured JSON generation (course parsing).
- * Uses full Flash models first for higher accuracy, then falls back to Lite (500 RPD free).
+ * Ordered by remaining free quota so the app never stops.
+ * Groq is placed after Lite models because generateObject structured output
+ * is more reliable on Gemini than Groq for complex schemas.
  */
 function getJsonModels() {
     const models = [];
@@ -40,25 +42,26 @@ function getJsonModels() {
     const groq = getGroqClient();
 
     if (google) {
-        models.push(google("gemini-flash-latest"));   // Gemini 3.7 Flash  — 20 RPD
-        models.push(google("gemini-3.6-flash"));      // Gemini 3.6 Flash  — 20 RPD
-        models.push(google("gemini-3.5-flash-lite")); // Gemini 3.5 Flash Lite — 500 RPD 🟢
-        models.push(google("gemini-3.1-flash-lite")); // Gemini 3.1 Flash Lite — 500 RPD 🟢
+        models.push(google("gemini-3.1-flash-lite")); // 500 RPD — 0 used  🟢 most quota
+        models.push(google("gemini-3.5-flash-lite")); // 500 RPD — 2 used  🟢
+        models.push(google("gemini-3.6-flash"));      //  20 RPD — 7 used  🟡
+        models.push(google("gemini-flash-latest"));   //  20 RPD — 19 used 🔴 last resort
     }
     if (groq) {
-        models.push(groq("llama-3.3-70b-versatile")); // Groq fallback — generous free tier
-        models.push(groq("llama-3.1-8b-instant"));
+        models.push(groq("llama-3.3-70b-versatile")); // no daily limit    🟢
+        models.push(groq("llama-3.1-8b-instant"));    // no daily limit    🟢
     }
     if (models.length === 0) {
         const g = createGoogleGenerativeAI({ apiKey: "" });
-        models.push(g("gemini-flash-latest"));
+        models.push(g("gemini-3.1-flash-lite"));
     }
     return models;
 }
 
 /**
  * Models for text generation (notes, practice questions, AI chat).
- * Starts with Lite models (500 RPD free) to preserve the scarce 20-RPD Flash quota.
+ * Ordered by remaining free quota — Groq has no daily cap so sits
+ * between the two Lite pools and the near-exhausted Flash models.
  */
 function getTextModels() {
     const models = [];
@@ -66,21 +69,24 @@ function getTextModels() {
     const groq = getGroqClient();
 
     if (google) {
-        models.push(google("gemini-3.5-flash-lite")); // Gemini 3.5 Flash Lite — 500 RPD 🟢 (start here!)
-        models.push(google("gemini-3.1-flash-lite")); // Gemini 3.1 Flash Lite — 500 RPD 🟢
-        models.push(google("gemini-3.6-flash"));      // Gemini 3.6 Flash — 20 RPD (fallback only)
-        models.push(google("gemini-flash-latest"));   // Gemini 3.7 Flash — 20 RPD (last resort)
+        models.push(google("gemini-3.1-flash-lite")); // 500 RPD — 0 used  🟢 most quota
+        models.push(google("gemini-3.5-flash-lite")); // 500 RPD — 2 used  🟢
     }
     if (groq) {
-        models.push(groq("llama-3.3-70b-versatile"));
-        models.push(groq("llama-3.1-8b-instant"));
+        models.push(groq("llama-3.3-70b-versatile")); // no daily limit    🟢
+        models.push(groq("llama-3.1-8b-instant"));    // no daily limit    🟢
+    }
+    if (google) {
+        models.push(google("gemini-3.6-flash"));      //  20 RPD — 7 used  🟡
+        models.push(google("gemini-flash-latest"));   //  20 RPD — 19 used 🔴 last resort
     }
     if (models.length === 0) {
         const g = createGoogleGenerativeAI({ apiKey: "" });
-        models.push(g("gemini-3.5-flash-lite"));
+        models.push(g("gemini-3.1-flash-lite"));
     }
     return models;
 }
+
 
 export async function generateText(options: {
     prompt: string;
