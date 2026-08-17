@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 export type AuthResult = {
     success?: boolean;
@@ -68,8 +69,13 @@ export async function signup(formData: FormData): Promise<AuthResult> {
 }
 
 export async function logout() {
-    const supabase = await createClient();
-    await supabase.auth.signOut();
-    redirect("/");
+    try {
+        const supabase = await createClient();
+        await supabase.auth.signOut();
+    } catch (err) {
+        console.warn("Logout error:", err);
+    }
+    revalidatePath("/", "layout");
+    redirect("/auth");
 }
 

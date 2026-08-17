@@ -69,8 +69,7 @@ export default function AuthPage() {
         return;
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      window.location.href = "/dashboard";
     } catch (error) {
       setErrorMsg(getErrorMessage(error));
       setLoading(false);
