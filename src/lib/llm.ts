@@ -1,6 +1,6 @@
 import "server-only";
 
-import { generateObject, generateText as generateAiText, jsonSchema } from "ai";
+import { generateText as generateAiText, Output, jsonSchema } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
 import { getErrorMessage } from "@/lib/utils";
@@ -103,8 +103,7 @@ export async function generateText(options: {
                 model,
                 system: options.system,
                 prompt: options.prompt,
-                // @ts-expect-error: Vercel AI SDK version parameter mapping
-                maxTokens: options.maxTokens ?? 4096,
+                maxOutputTokens: options.maxTokens ?? 4096,
             });
 
             if (!text) throw new LlmError("LLM returned an empty response.");
@@ -131,16 +130,18 @@ export async function generateJson<T>(options: {
     let lastError: unknown = null;
     for (const model of models) {
         try {
-            const { object } = await generateObject({
+            const { output } = await generateAiText({
                 model,
                 system: options.system,
                 prompt: options.prompt,
-                schema: jsonSchema(options.schema as Record<string, unknown>),
-                // @ts-expect-error: Vercel AI SDK version parameter mapping
-                maxTokens: options.maxTokens ?? 8192,
+                output: Output.object({
+                    schema: jsonSchema(options.schema),
+                }),
+                maxOutputTokens: options.maxTokens ?? 8192,
             });
 
-            return object as T;
+            if (output === undefined) throw new LlmError("LLM returned empty structured output.");
+            return output as T;
         } catch (error: unknown) {
             lastError = error;
             console.error("LLM Error for model:", error);

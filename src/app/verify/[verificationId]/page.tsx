@@ -25,9 +25,9 @@ interface AuthUser {
 
 function maskEmail(email?: string): string {
   if (!email || !email.includes("@")) return "Unavailable";
-  const [name, domain] = email.split("@");
+  const [name] = email.split("@");
   const masked = name.length <= 2 ? `${name[0] || "*"}*` : `${name[0]}***${name[name.length - 1]}`;
-  return `${masked}@${domain}`;
+  return `${masked}@***`;
 }
 
 export default async function VerifyCertificateResultPage({

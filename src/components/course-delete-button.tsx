@@ -9,21 +9,31 @@ export function CourseDeleteButton({ courseId, courseName }: { courseId: string;
   const [isOpen, setIsOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
+    // Move focus into dialog on open
+    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+    );
+    focusable?.[0]?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsOpen(false);
+        triggerRef.current?.focus();
         return;
       }
       if (event.key !== "Tab") return;
 
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>("button");
-      if (!focusable || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const allFocusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+      );
+      if (!allFocusable || allFocusable.length === 0) return;
+      const first = allFocusable[0];
+      const last = allFocusable[allFocusable.length - 1];
 
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
@@ -38,9 +48,15 @@ export function CourseDeleteButton({ courseId, courseName }: { courseId: string;
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen]);
 
+  const handleClose = () => {
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  };
+
   return (
     <>
       <Button
+        ref={triggerRef}
         type="button"
         variant="ghost"
         size="icon"
@@ -53,7 +69,7 @@ export function CourseDeleteButton({ courseId, courseName }: { courseId: string;
       {isOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
-          onClick={() => setIsOpen(false)}
+          onClick={handleClose}
         >
           <div
             ref={dialogRef}
@@ -80,7 +96,7 @@ export function CourseDeleteButton({ courseId, courseName }: { courseId: string;
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isDeleting}>
+              <Button type="button" variant="outline" onClick={handleClose} disabled={isDeleting}>
                 Cancel
               </Button>
               <form action={deleteCourse} onSubmit={() => setIsDeleting(true)}>

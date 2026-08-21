@@ -199,7 +199,10 @@ export default function CourseCreatePage() {
 
     try {
       let extractedText = formData.syllabusText;
-      if (formData.syllabusFile && !formData.syllabusText.trim()) {
+
+      // Always re-parse the PDF if a file is present — never let a stale
+      // localStorage draft take precedence over a freshly uploaded file.
+      if (formData.syllabusFile) {
         const pdfData = new FormData();
         pdfData.append("file", formData.syllabusFile);
         const extractResult = await extractTextFromPDF(pdfData);
@@ -207,6 +210,10 @@ export default function CourseCreatePage() {
           throw new Error(extractResult.error || "Could not read this PDF.");
         }
         extractedText = extractResult.text;
+      }
+
+      if (!extractedText.trim()) {
+        throw new Error("Please upload a PDF or paste your syllabus text before generating.");
       }
 
       await runGeneration({

@@ -130,6 +130,9 @@ create index if not exists idx_certificates_user_id
 create index if not exists idx_certificates_course_id
   on public.certificates (course_id);
 
+create index if not exists idx_certificates_verification_id
+  on public.certificates (verification_id);
+
 -- ------------------------------------------------------------
 -- Row Level Security
 -- ------------------------------------------------------------

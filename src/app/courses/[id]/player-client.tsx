@@ -249,6 +249,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
     const [mockAnswers, setMockAnswers] = useState<Record<number, string>>({});
     const topicButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
     const hasRestoredTopicRef = useRef(false);
+    const isSyncingProgressRef = useRef(false);
 
     // AI Chat overlay state
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -528,11 +529,12 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         practiceCompleted?: boolean;
         videoProgress?: number;
     }) => {
-        if (!activeTopic || isSyncingProgress) {
+        if (!activeTopic || isSyncingProgressRef.current) {
             return;
         }
 
         setActionError(null);
+        isSyncingProgressRef.current = true;
         setIsSyncingProgress(true);
 
         // Optimistic: reflect the toggle immediately, then reconcile or roll back.
@@ -555,6 +557,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         setActiveTopic((prev) => (prev ? optimisticPatch(prev) : prev));
 
         const result = await updateTopicProgress(courseState.id, activeTopic.id, updates);
+        isSyncingProgressRef.current = false;
         setIsSyncingProgress(false);
 
         if (!result.success) {
@@ -570,7 +573,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
         }
 
         applyProgressResult(result.modules, result.completionPercentage, { keepCurrentTopic: true });
-    }, [activeTopic, applyProgressResult, courseState, isSyncingProgress, showToast]);
+    }, [activeTopic, applyProgressResult, courseState, showToast]);
 
     const handleMarkComplete = async () => {
         if (!activeTopic || activeTopic.isCompleted || isCompleting) {
@@ -1337,6 +1340,9 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
             <AnimatePresence>
                 {isChatOpen && (
                     <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="ai-chat-title"
                         initial={{ opacity: 0, y: 24, scale: 0.96 }}
                         animate={{ opacity: 1, y: 0,  scale: 1    }}
                         exit={{ opacity: 0, y: 24, scale: 0.96 }}
@@ -1351,11 +1357,11 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                                     <Brain className="w-4 h-4 text-[hsl(var(--primary-foreground))]" />
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="text-sm font-bold leading-none">AI Tutor</p>
+                                    <h2 id="ai-chat-title" className="text-sm font-bold leading-none">AI Tutor</h2>
                                     <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5 truncate max-w-[240px]">{activeTopic?.title}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsChatOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:bg-white/10 transition-colors shrink-0">
+                            <button onClick={() => setIsChatOpen(false)} aria-label="Close AI Tutor" className="w-7 h-7 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:bg-white/10 transition-colors shrink-0">
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
@@ -1447,7 +1453,9 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
 
                         {/* Input */}
                         <div className="flex gap-2 p-3 shrink-0" style={{ borderTop: "1px solid hsl(var(--border))", background: "hsl(var(--border) / 0.5)" }}>
+                            <label htmlFor="ai-chat-input" className="sr-only">Ask a question about {activeTopic?.title}</label>
                             <input
+                                id="ai-chat-input"
                                 ref={chatInputRef}
                                 value={chatQuestion}
                                 onChange={(e) => setChatQuestion(e.target.value)}
@@ -1460,6 +1468,7 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                             <button
                                 onClick={() => handleAskAI()}
                                 disabled={!chatQuestion.trim() || isChatLoading}
+                                aria-label="Send message"
                                 className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105"
                                 style={{ background: "hsl(var(--primary))" }}
                             >
@@ -1478,7 +1487,9 @@ export default function CoursePlayerClient({ courseData }: PlayerProps) {
                     onClick={() => setIsChatOpen(true)}
                     className="fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-2xl shadow-glow-cyan"
                     style={{ background: "hsl(var(--primary))" }}
-                    title="Ask AI about this topic"
+                    aria-label="Ask AI Tutor about this topic"
+                    aria-haspopup="dialog"
+                    aria-expanded={false}
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.95 }}
                 >

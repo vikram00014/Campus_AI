@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Allow: /verify
+Disallow: /dashboard
+Disallow: /courses
+Disallow: /profile
+Disallow: /api
+
+Sitemap: https://campus-ai-woad.vercel.app/sitemap.xml

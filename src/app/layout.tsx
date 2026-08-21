@@ -31,8 +31,6 @@ export const metadata: Metadata = {
 
 import AnimatedBackground from "@/components/animated-background";
 
-export const dynamic = "force-dynamic";
-
 export default async function RootLayout({
   children,
 }: Readonly<{

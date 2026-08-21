@@ -281,6 +281,26 @@
   .typing-dot:nth-child(3) {
     animation-delay: 0.3s;
   }
+
+  /* Chat bubble slide-in animations */
+  .animate-chat-right {
+    animation: chat-slide-right 0.2s ease-out forwards;
+  }
+
+  .animate-chat-left {
+    animation: chat-slide-left 0.2s ease-out forwards;
+  }
+
+  /* Floating AI button glow shadow */
+  .shadow-glow-cyan {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0), 0 8px 32px hsl(var(--primary) / 0.35);
+  }
+
+  /* Sidebar progress bar glow */
+  .progress-glow {
+    background: hsl(var(--primary));
+    box-shadow: 0 0 8px hsl(var(--primary) / 0.5);
+  }
 }
 
 @layer utilities {
@@ -310,6 +330,28 @@
   30% {
     opacity: 1;
     transform: translateY(-4px);
+  }
+}
+
+@keyframes chat-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes chat-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
